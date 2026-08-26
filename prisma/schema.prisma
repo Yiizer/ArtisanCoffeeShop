@@ -1,0 +1,110 @@
+// Prisma schema for the Coffee Shop Ordering System (v1 prototype).
+// All monetary values are stored as integer centavos.
+// This is a no-auth prototype: there are intentionally no staff/user/role models.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  PENDING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  GCASH
+}
+
+model MenuItem {
+  id             String          @id @default(cuid())
+  name           String
+  description    String?
+  basePriceCents Int // integer centavos, >= 0
+  category       String
+  imageUrl       String?
+  available      Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  sizes          MenuItemSize[]
+  addOns         MenuItemAddOn[]
+  orderItems     OrderItem[]
+
+  @@index([category])
+}
+
+model MenuItemSize {
+  id              String   @id @default(cuid())
+  menuItemId      String
+  name            String
+  priceDeltaCents Int      @default(0) // integer centavos, may be negative
+  menuItem        MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  orderItems OrderItem[]
+
+  @@index([menuItemId])
+}
+
+model MenuItemAddOn {
+  id         String   @id @default(cuid())
+  menuItemId String
+  name       String
+  priceCents Int      @default(0) // integer centavos, >= 0
+  available  Boolean  @default(true)
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  orderItemAddOns OrderItemAddOn[]
+
+  @@index([menuItemId])
+}
+
+model Order {
+  id              String        @id @default(cuid())
+  dailyNumber     Int // resets to 1 each Business_Day (2 AM Asia/Manila)
+  customerName    String?
+  status          OrderStatus   @default(PENDING)
+  paymentMethod   PaymentMethod
+  paymentRef      String?
+  isPaid          Boolean       @default(false)
+  refunded        Boolean       @default(false)
+  totalPriceCents Int // server-computed frozen snapshot
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  items           OrderItem[]
+
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id         String           @id @default(cuid())
+  orderId    String
+  menuItemId String
+  sizeId     String?
+  quantity   Int // integer >= 1
+  notes      String?
+  order      Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem   MenuItem         @relation(fields: [menuItemId], references: [id])
+  size       MenuItemSize?    @relation(fields: [sizeId], references: [id])
+  addOns     OrderItemAddOn[]
+
+  @@index([orderId])
+  @@index([menuItemId])
+  @@index([sizeId])
+}
+
+model OrderItemAddOn {
+  id          String        @id @default(cuid())
+  orderItemId String
+  addOnId     String
+  orderItem   OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  addOn       MenuItemAddOn @relation(fields: [addOnId], references: [id])
+
+  @@index([orderItemId])
+  @@index([addOnId])
+}

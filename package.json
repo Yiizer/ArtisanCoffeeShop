@@ -1,0 +1,53 @@
+{
+  "name": "artisan-coffee-shop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "prisma db seed",
+    "db": "node scripts/db.mjs",
+    "db:stop": "node scripts/db.mjs --stop"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.2.1",
+    "next": "15.5.23",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "recharts": "2.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "@types/react": "19.0.7",
+    "@types/react-dom": "19.0.3",
+    "autoprefixer": "10.4.20",
+    "embedded-postgres": "^17.10.0-beta.17",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.3",
+    "fast-check": "3.23.2",
+    "postcss": "8.4.49",
+    "prisma": "6.2.1",
+    "tailwindcss": "3.4.17",
+    "tsx": "4.19.2",
+    "typescript": "5.7.3",
+    "vitest": "2.1.8"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true,
+    "@prisma/engines@6.2.1": true,
+    "prisma@6.2.1": true,
+    "@prisma/client@6.2.1": true,
+    "@embedded-postgres/windows-x64@17.10.0-beta.17": true,
+    "esbuild@0.23.1": false,
+    "sharp@0.34.5": false
+  }
+}
