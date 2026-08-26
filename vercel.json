@@ -1,8 +1,6 @@
 {
-  "buildCommand": "prisma generate && npm run build",
-  "devCommand": "npm run dev",
-  "installCommand": "npm install && prisma generate",
   "framework": "nextjs",
+  "buildCommand": "npm run vercel-build",
   "git": {
     "deploymentEnabled": true
   }

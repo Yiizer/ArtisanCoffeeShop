@@ -15,7 +15,7 @@
     "db": "node scripts/db.mjs",
     "db:stop": "node scripts/db.mjs --stop",
     "postinstall": "prisma generate",
-    "vercel-build": "prisma generate && prisma migrate deploy && next build"
+    "vercel-build": "npx prisma generate && npx prisma migrate deploy && next build"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
