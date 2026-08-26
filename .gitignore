@@ -35,3 +35,5 @@ next-env.d.ts
 
 # local embedded postgres cluster
 /.pgdata/
+.vercel
+.env*
