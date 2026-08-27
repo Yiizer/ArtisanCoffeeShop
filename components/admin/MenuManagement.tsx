@@ -150,8 +150,12 @@ export default function MenuManagement() {
       const res = await fetch(`/api/menu/${deletingItem.id}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error(`Delete failed (${res.status}).`);
-      showToast(`Removed "${deletingItem.name}" from menu.`);
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error ?? `Delete failed (${res.status}).`);
+      }
+      const data = await res.json().catch(() => ({}));
+      showToast(data.message ?? `Removed "${deletingItem.name}" from menu.`);
       setDeletingItem(null);
       await load();
     } catch (err) {

@@ -85,7 +85,15 @@ export async function PATCH(request: Request, context: RouteContext) {
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
-  const { id } = await context.params;
-  await deleteMenuItem(id);
-  return NextResponse.json({ success: true }, { status: 200 });
+  try {
+    const { id } = await context.params;
+    const result = await deleteMenuItem(id);
+    return NextResponse.json(result, { status: 200 });
+  } catch (error) {
+    console.error("DELETE /api/menu/[id] error:", error);
+    return NextResponse.json(
+      { error: "Failed to delete menu item." },
+      { status: 500 }
+    );
+  }
 }

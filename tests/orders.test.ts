@@ -72,6 +72,7 @@ beforeEach(() => {
     id: "order-new",
     ...args.data,
   }));
+  mockPrisma.$transaction.mockImplementation(async (cb: any) => cb(mockPrisma));
 });
 
 describe("createOrder validation (HTTP 400 cases)", () => {

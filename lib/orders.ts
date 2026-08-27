@@ -221,28 +221,33 @@ export async function createOrder(input: CreateOrderInput) {
 
   const now = new Date();
   const businessDay = getBusinessDay(now);
-  const existingInDay = await prisma.order.count({
-    where: {
-      createdAt: {
-        gte: new Date(businessDayStartUtcMs(businessDay)),
-        lt: new Date(businessDayEndUtcMs(businessDay)),
-      },
-    },
-  });
-  const dailyNumber = computeNextDailyNumber(existingInDay);
+  const startGte = new Date(businessDayStartUtcMs(businessDay));
+  const endLt = new Date(businessDayEndUtcMs(businessDay));
 
-  return prisma.order.create({
-    data: {
-      dailyNumber,
-      customerName: input.customerName ?? null,
-      status: OrderStatus.PENDING,
-      paymentMethod: input.paymentMethod,
-      isPaid: false,
-      refunded: false,
-      totalPriceCents,
-      items: { create: lines.map((l) => buildItemCreate(l.raw)) },
-    },
-    include: orderInclude,
+  return prisma.$transaction(async (tx) => {
+    const existingInDay = await tx.order.count({
+      where: {
+        createdAt: {
+          gte: startGte,
+          lt: endLt,
+        },
+      },
+    });
+    const dailyNumber = computeNextDailyNumber(existingInDay);
+
+    return tx.order.create({
+      data: {
+        dailyNumber,
+        customerName: input.customerName ?? null,
+        status: OrderStatus.PENDING,
+        paymentMethod: input.paymentMethod,
+        isPaid: false,
+        refunded: false,
+        totalPriceCents,
+        items: { create: lines.map((l) => buildItemCreate(l.raw)) },
+      },
+      include: orderInclude,
+    });
   });
 }
 

@@ -75,6 +75,9 @@ export default function DeleteConfirmModal({
               Includes {item.sizes.length} size(s) and {item.addOns.length} add-on(s).
             </p>
           )}
+          <p className="mt-2 text-[11px] text-roast/70 italic border-t border-roast/10 pt-2">
+            💡 If this item was ordered in past transactions, it will be deactivated and hidden rather than permanently deleted to preserve historical revenue logs.
+          </p>
         </div>
 
         <div className="mt-6 flex justify-end gap-2.5">

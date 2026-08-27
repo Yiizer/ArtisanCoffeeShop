@@ -243,11 +243,36 @@ export async function updateMenuItem(id: string, input: Partial<MenuItemInput>) 
 }
 
 /**
- * Delete a menu item; the schema's onDelete: Cascade removes its sizes and
- * add-ons (Requirement 2.4).
+ * Delete a menu item. If the item has historical order records referencing it,
+ * catching foreign key violations and gracefully deactivating (available: false)
+ * preserves sales history without crashing.
  */
-export async function deleteMenuItem(id: string): Promise<void> {
-  await prisma.menuItem.delete({ where: { id } });
+export async function deleteMenuItem(
+  id: string
+): Promise<{ deleted: boolean; deactivated: boolean; message: string }> {
+  try {
+    await prisma.menuItem.delete({ where: { id } });
+    return {
+      deleted: true,
+      deactivated: false,
+      message: "Menu item permanently deleted.",
+    };
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string };
+    if (err?.code === "P2003" || err?.message?.includes("Foreign key constraint")) {
+      await prisma.menuItem.update({
+        where: { id },
+        data: { available: false },
+      });
+      return {
+        deleted: false,
+        deactivated: true,
+        message:
+          "Item has existing order history; it has been deactivated and hidden from ordering.",
+      };
+    }
+    throw error;
+  }
 }
 
 /**

@@ -12,7 +12,8 @@
  *
  * All monetary values below are integer centavos (e.g. 15000 = ₱150.00).
  */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, UserRole } from "@prisma/client";
+import { hashPassword } from "../lib/auth";
 
 const prisma = new PrismaClient();
 
@@ -151,26 +152,67 @@ const menuItems: SeedItem[] = [
 async function main() {
   console.log("Seeding placeholder menu data...");
 
-  // Idempotent-ish reset of menu content so re-running seed is safe in dev.
-  // Cascades remove sizes/add-ons. Orders are never seeded here.
-  await prisma.menuItem.deleteMany();
-
   for (const item of menuItems) {
-    await prisma.menuItem.create({
-      data: {
-        name: item.name,
-        description: item.description,
-        basePriceCents: item.basePriceCents,
-        category: item.category,
-        available: item.available,
-        sizes: { create: item.sizes },
-        addOns: { create: item.addOns },
-      },
+    const existing = await prisma.menuItem.findFirst({
+      where: { name: item.name },
     });
+    if (!existing) {
+      await prisma.menuItem.create({
+        data: {
+          name: item.name,
+          description: item.description,
+          basePriceCents: item.basePriceCents,
+          category: item.category,
+          available: item.available,
+          sizes: { create: item.sizes },
+          addOns: { create: item.addOns },
+        },
+      });
+    }
   }
 
+  // Seed default admin and staff accounts
+  console.log("Seeding default user accounts...");
+  const adminPassHash = await hashPassword("admin123");
+  const cashierPassHash = await hashPassword("cashier123");
+
+  await prisma.user.upsert({
+    where: { username: "admin" },
+    update: {
+      passwordHash: adminPassHash,
+      name: "Store Manager",
+      role: UserRole.ADMIN,
+      pin: "8888",
+    },
+    create: {
+      username: "admin",
+      passwordHash: adminPassHash,
+      name: "Store Manager",
+      role: UserRole.ADMIN,
+      pin: "8888",
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { username: "cashier" },
+    update: {
+      passwordHash: cashierPassHash,
+      name: "Front Cashier",
+      role: UserRole.STAFF,
+      pin: "1234",
+    },
+    create: {
+      username: "cashier",
+      passwordHash: cashierPassHash,
+      name: "Front Cashier",
+      role: UserRole.STAFF,
+      pin: "1234",
+    },
+  });
+
   const count = await prisma.menuItem.count();
-  console.log(`Seed complete: ${count} menu items created. No orders or staff accounts seeded.`);
+  const userCount = await prisma.user.count();
+  console.log(`Seed complete: ${count} menu items and ${userCount} users created.`);
 }
 
 main()
