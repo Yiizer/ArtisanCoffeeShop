@@ -218,16 +218,6 @@ function LoginForm() {
               ⌫
             </button>
           </div>
-
-          {/* Quick Demo Credentials Reminder */}
-          <div className="rounded-2xl border border-roast/15 bg-cream/50 p-3 text-center text-[11px] text-roast space-y-1">
-            <p className="font-bold text-espresso">Default Quick PINs:</p>
-            <div className="flex justify-center gap-4 font-mono font-bold">
-              <span>Cashier: <strong className="text-espresso">1234</strong></span>
-              <span>•</span>
-              <span>Manager: <strong className="text-espresso">8888</strong></span>
-            </div>
-          </div>
         </div>
       )}
 
@@ -271,17 +261,6 @@ function LoginForm() {
           >
             {loading ? "Signing in…" : "Sign In"}
           </button>
-
-          {/* Quick Demo Credentials Reminder */}
-          <div className="rounded-2xl border border-roast/15 bg-cream/50 p-3 text-center text-[11px] text-roast space-y-1">
-            <p className="font-bold text-espresso">Default Accounts:</p>
-            <p className="font-mono">
-              Admin: <strong>admin</strong> / <strong>admin123</strong>
-            </p>
-            <p className="font-mono">
-              Staff: <strong>cashier</strong> / <strong>cashier123</strong>
-            </p>
-          </div>
         </form>
       )}
     </div>
