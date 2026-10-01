@@ -41,6 +41,8 @@ export type CreateOrderInput = {
   customerName?: string | null;
   paymentMethod: PaymentMethodType;
   items: CreateOrderItemInput[];
+  /** When true the order is created already marked as paid (e.g. cash received). */
+  isPaid?: boolean;
 };
 
 export type OrderPatch =
@@ -241,7 +243,7 @@ export async function createOrder(input: CreateOrderInput) {
         customerName: input.customerName ?? null,
         status: OrderStatus.PENDING,
         paymentMethod: input.paymentMethod,
-        isPaid: false,
+        isPaid: !!input.isPaid,
         refunded: false,
         totalPriceCents,
         items: { create: lines.map((l) => buildItemCreate(l.raw)) },

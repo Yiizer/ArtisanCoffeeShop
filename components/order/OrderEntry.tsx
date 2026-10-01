@@ -67,6 +67,8 @@ export default function OrderEntry() {
   const [submitting,   setSubmitting]   = useState(false);
   const [submitError,  setSubmitError]  = useState<string | null>(null);
   const [lastNum,      setLastNum]      = useState<number | null>(null);
+  const [cashReceived, setCashReceived] = useState("");
+  const [lastChange,   setLastChange]   = useState<number | null>(null);
 
   // Load menu
   useEffect(() => {
@@ -134,15 +136,26 @@ export default function OrderEntry() {
     setLastNum(null); setSubmitError(null);
   }
 
+  // Parse cash received as centavos for comparison with runningTotal
+  const cashReceivedCents = cashReceived === "" ? null : Math.round(parseFloat(cashReceived) * 100);
+  const cashIsValid = cashReceivedCents !== null && !isNaN(cashReceivedCents) && cashReceivedCents >= runningTotal;
+  const cashIsInsufficient = cashReceivedCents !== null && !isNaN(cashReceivedCents) && cashReceivedCents < runningTotal;
+  const changeCents = cashIsValid ? cashReceivedCents - runningTotal : 0;
+
+  // Block submit when CASH is selected and amount is entered but insufficient
+  const cashBlocked = pm === "CASH" && cashReceived !== "" && !cashIsValid;
+
   async function submitOrder() {
-    if (!cart.length) return;
-    setSubmitting(true); setSubmitError(null); setLastNum(null);
+    if (!cart.length || cashBlocked) return;
+    setSubmitting(true); setSubmitError(null); setLastNum(null); setLastChange(null);
     try {
-      const res = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customerName: customerName.trim() || undefined, paymentMethod: pm, ...(pm === "GCASH" && gcashRef.trim() ? { paymentRef: gcashRef.trim() } : {}), items: cart.map((l) => ({ menuItemId: l.menuItemId, sizeId: l.sizeId ?? undefined, quantity: l.quantity, notes: l.notes || undefined, addOnIds: l.addOns.map((a) => a.id) })) }) });
+      const isPaid = pm === "CASH" && cashIsValid;
+      const res = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customerName: customerName.trim() || undefined, paymentMethod: pm, ...(pm === "GCASH" && gcashRef.trim() ? { paymentRef: gcashRef.trim() } : {}), ...(isPaid ? { isPaid: true } : {}), items: cart.map((l) => ({ menuItemId: l.menuItemId, sizeId: l.sizeId ?? undefined, quantity: l.quantity, notes: l.notes || undefined, addOnIds: l.addOns.map((a) => a.id) })) }) });
       if (!res.ok) { const b = await res.json().catch(() => null); throw new Error((b?.error || b?.message) ?? `Failed (${res.status})`); }
       const order = await res.json();
       setLastNum(order.dailyNumber ?? null);
-      setCart([]); setCustomerName(""); setGcashRef("");
+      if (isPaid) setLastChange(changeCents);
+      setCart([]); setCustomerName(""); setGcashRef(""); setCashReceived("");
     } catch (e) { setSubmitError(e instanceof Error ? e.message : "Failed to submit."); }
     finally { setSubmitting(false); }
   }
@@ -458,11 +471,49 @@ export default function OrderEntry() {
           </div>
         )}
 
+        {/* Cash Received & Change Calculator */}
+        {pm === "CASH" && (
+          <div>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-roast">Cash Received</label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-bold text-roast/50">₱</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                value={cashReceived}
+                onChange={(e) => { setCashReceived(e.target.value); setLastNum(null); setLastChange(null); }}
+                placeholder="0.00"
+                className="w-full rounded-xl border border-roast/20 bg-cream pl-8 pr-3.5 py-2.5 text-base sm:text-sm text-espresso placeholder:text-roast/40 focus:border-espresso focus:outline-none min-h-[44px] font-mono"
+              />
+            </div>
+            {cashReceived !== "" && (
+              <div className="mt-2">
+                {cashIsValid ? (
+                  <p className="flex items-baseline justify-between rounded-xl bg-green-50 px-3.5 py-2.5">
+                    <span className="text-xs font-bold uppercase tracking-wider text-green-700">Change</span>
+                    <span className="font-mono text-xl font-black text-green-700">{formatPesos(changeCents)}</span>
+                  </p>
+                ) : cashIsInsufficient ? (
+                  <p className="rounded-xl bg-red-50 px-3.5 py-2.5 text-xs font-bold text-red-700">
+                    ⚠ Insufficient — need {formatPesos(runningTotal - (cashReceivedCents ?? 0))} more
+                  </p>
+                ) : (
+                  <p className="rounded-xl bg-red-50 px-3.5 py-2.5 text-xs font-bold text-red-700">
+                    ⚠ Enter a valid amount
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Submit */}
         <button
           type="button"
           onClick={submitOrder}
-          disabled={!cart.length || submitting}
+          disabled={!cart.length || submitting || cashBlocked}
           className="flex min-h-[48px] w-full items-center justify-center rounded-full bg-espresso text-sm font-bold text-foam shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-40"
         >
           {submitting ? "Placing order…" : `Confirm Payment (${pm === "CASH" ? "Cash" : "GCash"})`}
@@ -474,6 +525,11 @@ export default function OrderEntry() {
         {lastNum !== null && (
           <p className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-800" role="status">
             ✓ Order #{lastNum} placed successfully!
+            {lastChange !== null && lastChange >= 0 && (
+              <span className="block mt-1 font-mono text-lg text-green-700">
+                Change: {formatPesos(lastChange)}
+              </span>
+            )}
           </p>
         )}
       </aside>
