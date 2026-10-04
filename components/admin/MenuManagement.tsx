@@ -373,9 +373,9 @@ export default function MenuManagement() {
         )}
       </div>
 
-      {/* Category Filter Pills (Wrap on all screen sizes) */}
-      <div className="pb-1">
-        <div className="flex items-center gap-1.5 flex-wrap">
+      {/* Category Filter Pills (Smooth scroll on mobile, flex-wrap on desktop) */}
+      <div className="pb-1 overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-1.5 shrink-0 py-0.5 sm:flex-wrap">
           <button
             type="button"
             onClick={() => setActiveCategory("all")}

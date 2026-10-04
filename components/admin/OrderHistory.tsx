@@ -103,23 +103,23 @@ export default function OrderHistory() {
       </div>
 
       {/* Period Navigation */}
-      <div className="flex items-center justify-between sm:justify-center gap-3 bg-foam p-3 rounded-2xl border border-roast/15 shadow-2xs">
+      <div className="flex items-center justify-between sm:justify-center gap-2 sm:gap-4 bg-foam p-2.5 sm:p-3 rounded-2xl border border-roast/15 shadow-2xs">
         <button
           type="button"
           aria-label="Previous period"
           onClick={() => navigate(-1)}
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-roast/20 bg-cream text-sm font-bold text-roast hover:bg-latte/30 active:scale-95 transition-all"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-roast/20 bg-cream text-sm font-bold text-roast hover:bg-latte/30 active:scale-95 transition-all"
         >
           ←
         </button>
-        <span className="text-center text-xs sm:text-sm font-bold text-espresso tracking-wide">
+        <span className="text-center text-xs sm:text-sm font-bold text-espresso tracking-wide truncate px-1">
           {periodLabel}
         </span>
         <button
           type="button"
           aria-label="Next period"
           onClick={() => navigate(1)}
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-roast/20 bg-cream text-sm font-bold text-roast hover:bg-latte/30 active:scale-95 transition-all"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-roast/20 bg-cream text-sm font-bold text-roast hover:bg-latte/30 active:scale-95 transition-all"
         >
           →
         </button>

@@ -5,11 +5,13 @@
 @layer base {
   * {
     min-width: 0;
+    -webkit-tap-highlight-color: transparent;
   }
 
   html {
     overflow-x: hidden;
     width: 100%;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
@@ -20,11 +22,19 @@
     overflow-x: hidden;
     width: 100%;
     max-width: 100vw;
+    touch-action: manipulation;
   }
 
   /* Inputs and selects inherit the brand text colour */
   input, select, textarea {
     color: #3D2314;
+    font-size: 16px; /* Prevents auto-zoom on iOS when tapping inputs */
+  }
+
+  @media (min-width: 640px) {
+    input, select, textarea {
+      font-size: inherit;
+    }
   }
 }
 
@@ -38,3 +48,4 @@
     scrollbar-width: none;
   }
 }
+

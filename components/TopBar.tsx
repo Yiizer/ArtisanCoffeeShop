@@ -56,30 +56,30 @@ export default function TopBar() {
 
   return (
     <header className="border-b border-roast/10 bg-foam">
-      <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-3 sm:px-5 py-3">
+      <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-3 sm:px-5 py-2.5 sm:py-3">
         {/* Brand wordmark — matches the logo's lowercase style + tagline */}
-        <Link href="/" className="flex flex-col leading-none select-none">
-          <span className="text-[1.7rem] font-black tracking-[-0.04em] text-espresso lowercase">
+        <Link href="/" className="flex flex-col leading-none select-none shrink-0">
+          <span className="text-xl sm:text-[1.7rem] font-black tracking-[-0.04em] text-espresso lowercase">
             artisan
           </span>
-          <span className="mt-0.5 text-[0.6rem] font-medium tracking-[0.22em] uppercase text-roast">
+          <span className="text-[0.55rem] sm:text-[0.6rem] font-medium tracking-[0.2em] uppercase text-roast">
             coffee&nbsp;•&nbsp;desserts
           </span>
         </Link>
 
         {/* Right side controls (Hidden on Login Page) */}
         {!isLoginPage && (
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
             {/* Mode toggle */}
             <nav
               aria-label="Mode toggle"
-              className="flex items-center gap-1 rounded-full border border-roast/10 bg-cream p-1"
+              className="flex items-center gap-0.5 sm:gap-1 rounded-full border border-roast/10 bg-cream p-0.5 sm:p-1"
             >
               <Link
                 href="/order"
                 aria-current={pathname === "/order" ? "page" : undefined}
                 className={
-                  "rounded-full px-3.5 sm:px-4 py-1.5 text-xs sm:text-sm font-medium transition-colors " +
+                  "rounded-full px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold transition-colors min-h-[34px] sm:min-h-[36px] flex items-center " +
                   (pathname.startsWith("/order")
                     ? "bg-espresso text-foam shadow-sm"
                     : "text-roast hover:bg-latte/30")
@@ -94,7 +94,7 @@ export default function TopBar() {
                   href="/admin"
                   aria-current={pathname.startsWith("/admin") ? "page" : undefined}
                   className={
-                    "rounded-full px-3.5 sm:px-4 py-1.5 text-xs sm:text-sm font-medium transition-colors " +
+                    "rounded-full px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold transition-colors min-h-[34px] sm:min-h-[36px] flex items-center " +
                     (pathname.startsWith("/admin")
                       ? "bg-espresso text-foam shadow-sm"
                       : "text-roast hover:bg-latte/30")
@@ -107,7 +107,7 @@ export default function TopBar() {
 
             {/* User Profile Badge & Logout Button */}
             {user && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <div className="hidden md:flex flex-col text-right">
                   <span className="text-xs font-bold text-espresso leading-none">
                     {user.name}
@@ -122,7 +122,7 @@ export default function TopBar() {
                   onClick={handleLogout}
                   disabled={loggingOut}
                   title="Sign out of current account"
-                  className="rounded-full border border-roast/20 bg-cream/70 px-3 py-1.5 text-xs font-bold text-roast hover:bg-red-50 hover:text-red-700 hover:border-red-200 transition-all active:scale-95 min-h-[36px]"
+                  className="rounded-full border border-roast/20 bg-cream/70 px-2.5 sm:px-3 py-1.5 text-xs font-bold text-roast hover:bg-red-50 hover:text-red-700 hover:border-red-200 transition-all active:scale-95 min-h-[34px] sm:min-h-[36px] whitespace-nowrap"
                 >
                   {loggingOut ? "…" : "Sign Out"}
                 </button>
