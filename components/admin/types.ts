@@ -5,6 +5,7 @@ export type IngredientUnit = "G" | "ML" | "PC";
 export type AdminIngredient = {
   id: string;
   name: string;
+  category: string | null;
   unit: IngredientUnit;
   stockQty: string;
   unitCostCents: string | null;

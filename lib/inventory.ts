@@ -24,6 +24,7 @@ export class InventoryServiceError extends Error {
 
 export type CreateIngredientInput = {
   name: string;
+  category?: string | null;
   unit: IngredientUnit;
   unitCostCents?: number | string | null;
   initialStock?: number | string;
@@ -32,6 +33,7 @@ export type CreateIngredientInput = {
 
 export type UpdateIngredientInput = {
   name?: string;
+  category?: string | null;
   unit?: IngredientUnit;
   unitCostCents?: number | string | null;
   lowStockThreshold?: number | string;
@@ -55,13 +57,20 @@ export type AdjustInput = {
   note?: string | null;
 };
 
+function normalizeCategory(category: string | null | undefined): string | null | undefined {
+  if (category === undefined) return undefined;
+  if (category === null) return null;
+  const trimmed = category.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 /**
  * List ingredients for staff view (no cost data).
  */
 export async function listIngredientsForStaff() {
   const ingredients = await prisma.ingredient.findMany({
     where: { archivedAt: null },
-    orderBy: { name: "asc" },
+    orderBy: [{ category: "asc" }, { name: "asc" }],
   });
 
   return ingredients.map((ing) => {
@@ -70,6 +79,7 @@ export async function listIngredientsForStaff() {
     return {
       id: ing.id,
       name: ing.name,
+      category: ing.category,
       unit: ing.unit,
       stockQty: stock.toString(),
       lowStockThreshold: lowThresh.toString(),
@@ -85,7 +95,9 @@ export async function listIngredientsForStaff() {
 export async function listIngredientsForAdmin(includeArchived = false) {
   const ingredients = await prisma.ingredient.findMany({
     where: includeArchived ? undefined : { archivedAt: null },
-    orderBy: [{ archivedAt: "desc" }, { name: "asc" }],
+    orderBy: includeArchived
+      ? [{ archivedAt: "desc" }, { category: "asc" }, { name: "asc" }]
+      : [{ category: "asc" }, { name: "asc" }],
   });
 
   return ingredients.map((ing) => {
@@ -94,6 +106,7 @@ export async function listIngredientsForAdmin(includeArchived = false) {
     return {
       id: ing.id,
       name: ing.name,
+      category: ing.category,
       unit: ing.unit,
       stockQty: stock.toString(),
       unitCostCents: ing.unitCostCents ? ing.unitCostCents.toString() : null,
@@ -132,6 +145,7 @@ export async function createIngredient(
     const ingredient = await tx.ingredient.create({
       data: {
         name: input.name.trim(),
+        category: normalizeCategory(input.category) ?? null,
         unit: input.unit,
         stockQty: toPrismaDec(initialStock),
         unitCostCents: unitCost ? toPrismaDec(unitCost) : null,
@@ -174,6 +188,9 @@ export async function updateIngredient(
   if (input.name !== undefined) {
     if (!input.name.trim()) throw new InventoryServiceError(400, "Name cannot be empty.");
     data.name = input.name.trim();
+  }
+  if (input.category !== undefined) {
+    data.category = normalizeCategory(input.category) ?? null;
   }
   if (input.unit !== undefined) {
     if (!["G", "ML", "PC"].includes(input.unit)) {

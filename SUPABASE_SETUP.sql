@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS "User" (
 CREATE TABLE IF NOT EXISTS "Ingredient" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "category" TEXT,
     "unit" "IngredientUnit" NOT NULL,
     "stockQty" DECIMAL(14,3) NOT NULL DEFAULT 0,
     "unitCostCents" DECIMAL(14,4),
@@ -248,6 +249,8 @@ CREATE TABLE IF NOT EXISTS "Expense" (
 
 
 -- 4. Ensure New Columns Exist on Previously Created Tables
+ALTER TABLE "Ingredient" ADD COLUMN IF NOT EXISTS "category" TEXT;
+
 ALTER TABLE "MenuItem" ADD COLUMN IF NOT EXISTS "noIngredients" BOOLEAN NOT NULL DEFAULT false;
 
 ALTER TABLE "MenuItemAddOn" ADD COLUMN IF NOT EXISTS "noIngredients" BOOLEAN NOT NULL DEFAULT false;
@@ -277,6 +280,7 @@ WHERE "businessDay" IS NULL;
 -- 6. Create Indexes (Idempotent)
 CREATE UNIQUE INDEX IF NOT EXISTS "User_username_key" ON "User"("username");
 CREATE INDEX IF NOT EXISTS "Ingredient_archivedAt_idx" ON "Ingredient"("archivedAt");
+CREATE INDEX IF NOT EXISTS "Ingredient_category_idx" ON "Ingredient"("category");
 CREATE INDEX IF NOT EXISTS "MenuItemIngredient_ingredientId_idx" ON "MenuItemIngredient"("ingredientId");
 CREATE INDEX IF NOT EXISTS "SizeIngredient_ingredientId_idx" ON "SizeIngredient"("ingredientId");
 CREATE INDEX IF NOT EXISTS "AddOnIngredient_ingredientId_idx" ON "AddOnIngredient"("ingredientId");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useId, Fragment } from "react";
 import { formatPesos } from "@/lib/format";
 import type { AdminIngredient, PendingCostReview, AdminStockMovement, IngredientUnit } from "./types";
 
@@ -15,6 +15,7 @@ export default function InventoryManagement() {
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "low" | "archived">("all");
+  const [activeCategory, setActiveCategory] = useState<string>("all");
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -130,16 +131,66 @@ export default function InventoryManagement() {
     [ingredients]
   );
 
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    ingredients.forEach((i) => {
+      if (i.category && i.category.trim()) {
+        set.add(i.category.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [ingredients]);
+
+  const hasUncategorized = useMemo(() => {
+    return ingredients.some((i) => !i.category || !i.category.trim());
+  }, [ingredients]);
+
+  const uncategorizedCount = useMemo(() => {
+    return ingredients.filter((i) => {
+      const isArchived = !!i.archivedAt;
+      if (activeFilter === "low" && (isArchived || (!i.isLowStock && !i.isOutOfStock))) return false;
+      if (activeFilter === "archived" && !isArchived) return false;
+      if (activeFilter === "all" && isArchived) return false;
+      return !i.category || !i.category.trim();
+    }).length;
+  }, [ingredients, activeFilter]);
+
   const filteredIngredients = useMemo(() => {
     return ingredients.filter((ing) => {
       const isArchived = !!ing.archivedAt;
       if (activeFilter === "low" && (isArchived || (!ing.isLowStock && !ing.isOutOfStock))) return false;
       if (activeFilter === "archived" && !isArchived) return false;
       if (activeFilter === "all" && isArchived) return false; // Default 'all' shows active items
+
+      // Category filter
+      const ingCat = ing.category?.trim() || "Uncategorized";
+      if (activeCategory !== "all" && ingCat !== activeCategory) {
+        return false;
+      }
+
       if (!searchQuery.trim()) return true;
-      return ing.name.toLowerCase().includes(searchQuery.toLowerCase().trim());
+      const q = searchQuery.toLowerCase().trim();
+      return (
+        ing.name.toLowerCase().includes(q) ||
+        (ing.category ?? "").toLowerCase().includes(q)
+      );
     });
-  }, [ingredients, activeFilter, searchQuery]);
+  }, [ingredients, activeFilter, activeCategory, searchQuery]);
+
+  const groupedIngredients = useMemo(() => {
+    const map = new Map<string, AdminIngredient[]>();
+    for (const ing of filteredIngredients) {
+      const cat = ing.category?.trim() || "Uncategorized";
+      const list = map.get(cat) ?? [];
+      list.push(ing);
+      map.set(cat, list);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => {
+      if (a === "Uncategorized") return 1;
+      if (b === "Uncategorized") return -1;
+      return a.localeCompare(b);
+    });
+  }, [filteredIngredients]);
 
   return (
     <div className="space-y-4 sm:space-y-6 text-espresso">
@@ -177,7 +228,7 @@ export default function InventoryManagement() {
             Ingredients Ledger
           </h2>
           <p className="text-xs text-roast mt-0.5">
-            {activeCount} active ingredients · {lowStockCount} low stock
+            {activeCount} ingredients · {categories.length} {categories.length === 1 ? "category" : "categories"} · {lowStockCount} low stock
           </p>
         </div>
 
@@ -227,7 +278,7 @@ export default function InventoryManagement() {
           </span>
           <input
             type="text"
-            placeholder="Search ingredients..."
+            placeholder="Search ingredients or categories..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full rounded-full border border-roast/20 bg-foam pl-9 pr-9 py-2.5 text-base sm:text-xs font-semibold text-espresso placeholder-roast/40 focus:border-espresso focus:outline-none min-h-[44px]"
@@ -243,7 +294,7 @@ export default function InventoryManagement() {
           )}
         </div>
 
-        {/* Filter Pills (Smooth swipe on mobile) */}
+        {/* Status Filter Pills (Smooth swipe on mobile) */}
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
           <button
             type="button"
@@ -282,6 +333,63 @@ export default function InventoryManagement() {
             Archived ({archivedCount})
           </button>
         </div>
+
+        {/* Category Filter Pills (Smooth scroll on mobile, flex-wrap on desktop) */}
+        {(categories.length > 0 || hasUncategorized) && (
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 sm:flex-wrap">
+            <button
+              type="button"
+              onClick={() => setActiveCategory("all")}
+              className={
+                "rounded-full px-3.5 py-1.5 text-xs font-bold transition-all shrink-0 active:scale-95 min-h-[30px] " +
+                (activeCategory === "all"
+                  ? "bg-espresso text-foam shadow-2xs"
+                  : "bg-foam text-roast border border-roast/15 hover:bg-latte/30")
+              }
+            >
+              All Categories
+            </button>
+            {categories.map((cat) => {
+              const count = ingredients.filter((i) => {
+                const isArchived = !!i.archivedAt;
+                if (activeFilter === "low" && (isArchived || (!i.isLowStock && !i.isOutOfStock))) return false;
+                if (activeFilter === "archived" && !isArchived) return false;
+                if (activeFilter === "all" && isArchived) return false;
+                return (i.category?.trim() || "Uncategorized") === cat;
+              }).length;
+              const isSelected = activeCategory === cat;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setActiveCategory(cat)}
+                  className={
+                    "rounded-full px-3.5 py-1.5 text-xs font-bold transition-all shrink-0 active:scale-95 min-h-[30px] " +
+                    (isSelected
+                      ? "bg-espresso text-foam shadow-2xs"
+                      : "bg-foam text-roast border border-roast/15 hover:bg-latte/30")
+                  }
+                >
+                  {cat} ({count})
+                </button>
+              );
+            })}
+            {hasUncategorized && (
+              <button
+                type="button"
+                onClick={() => setActiveCategory("Uncategorized")}
+                className={
+                  "rounded-full px-3.5 py-1.5 text-xs font-bold transition-all shrink-0 active:scale-95 min-h-[30px] " +
+                  (activeCategory === "Uncategorized"
+                    ? "bg-espresso text-foam shadow-2xs"
+                    : "bg-foam text-roast border border-roast/15 hover:bg-latte/30")
+                }
+              >
+                Uncategorized ({uncategorizedCount})
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Pending Prices Review Queue (Mobile Card View + Desktop Table) */}
@@ -542,12 +650,13 @@ export default function InventoryManagement() {
         </div>
       ) : filteredIngredients.length === 0 ? (
         <div className="rounded-2xl border border-roast/15 bg-foam p-8 text-center">
-          <p className="text-sm font-bold text-espresso">No ingredients match "{searchQuery}"</p>
+          <p className="text-sm font-bold text-espresso">No ingredients match your criteria</p>
           <button
             type="button"
             onClick={() => {
               setSearchQuery("");
               setActiveFilter("all");
+              setActiveCategory("all");
             }}
             className="mt-2 text-xs font-bold text-espresso underline p-2 inline-block"
           >
@@ -557,111 +666,125 @@ export default function InventoryManagement() {
       ) : (
         <>
           {/* Mobile Card List (< md) */}
-          <div className="md:hidden space-y-3">
-            {filteredIngredients.map((ing) => {
-              const isArchived = !!ing.archivedAt;
-              const unitCost = ing.unitCostCents ? Number(ing.unitCostCents) : null;
-              const stockNum = Number(ing.stockQty);
+          <div className="md:hidden space-y-6">
+            {groupedIngredients.map(([category, catIngs]) => (
+              <section key={category} className="space-y-3">
+                <div className="flex items-center gap-2 border-b border-roast/10 pb-1.5 pt-1">
+                  <h3 className="text-xs font-bold tracking-[0.18em] uppercase text-roast">
+                    {category}
+                  </h3>
+                  <span className="rounded-full bg-cream px-2 py-0.5 text-[10px] font-bold text-espresso border border-roast/10">
+                    {catIngs.length}
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  {catIngs.map((ing) => {
+                    const isArchived = !!ing.archivedAt;
+                    const unitCost = ing.unitCostCents ? Number(ing.unitCostCents) : null;
+                    const stockNum = Number(ing.stockQty);
 
-              return (
-                <div
-                  key={ing.id}
-                  className={`rounded-2xl border border-roast/15 bg-foam p-4 shadow-2xs space-y-3 transition ${
-                    isArchived ? "opacity-60 bg-cream/40" : ""
-                  }`}
-                >
-                  {/* Card Header */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-bold text-base text-espresso leading-snug">{ing.name}</h4>
-                        {isArchived && (
-                          <span className="rounded-full bg-roast/15 px-2 py-0.5 text-[9px] text-roast font-bold uppercase tracking-wider">
-                            Archived
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-xs text-roast font-medium">Unit: {ing.unit}</span>
-                    </div>
-
-                    <div className="flex flex-col items-end gap-1">
-                      <span
-                        className={`font-mono text-base font-black ${
-                          stockNum <= 0
-                            ? "text-red-600"
-                            : ing.isLowStock
-                            ? "text-amber-700"
-                            : "text-espresso"
+                    return (
+                      <div
+                        key={ing.id}
+                        className={`rounded-2xl border border-roast/15 bg-foam p-4 shadow-2xs space-y-3 transition ${
+                          isArchived ? "opacity-60 bg-cream/40" : ""
                         }`}
                       >
-                        {stockNum} {ing.unit}
-                      </span>
-                      {ing.isOutOfStock && !isArchived ? (
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
-                          Out of stock
-                        </span>
-                      ) : ing.isLowStock && !ing.isOutOfStock && !isArchived ? (
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
-                          Low stock
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-                          In stock
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                        {/* Card Header */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-bold text-base text-espresso leading-snug">{ing.name}</h4>
+                              {isArchived && (
+                                <span className="rounded-full bg-roast/15 px-2 py-0.5 text-[9px] text-roast font-bold uppercase tracking-wider">
+                                  Archived
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-roast font-medium">Unit: {ing.unit}</span>
+                          </div>
 
-                  {/* Metrics Grid */}
-                  <div className="grid grid-cols-2 gap-2 text-xs bg-cream/70 rounded-xl p-2.5 border border-roast/10">
-                    <div>
-                      <span className="text-roast/70 block text-[9px] uppercase font-bold tracking-wider">Unit Cost</span>
-                      <span className="font-mono font-bold text-espresso">
-                        {unitCost !== null ? `${formatPesos(Math.round(unitCost))} / ${ing.unit}` : "No cost set"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-roast/70 block text-[9px] uppercase font-bold tracking-wider">Min Threshold</span>
-                      <span className="font-mono text-roast font-semibold">
-                        {Number(ing.lowStockThreshold)} {ing.unit}
-                      </span>
-                    </div>
-                  </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <span
+                              className={`font-mono text-base font-black ${
+                                stockNum <= 0
+                                  ? "text-red-600"
+                                  : ing.isLowStock
+                                  ? "text-amber-700"
+                                  : "text-espresso"
+                              }`}
+                            >
+                              {stockNum} {ing.unit}
+                            </span>
+                            {ing.isOutOfStock && !isArchived ? (
+                              <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                                Out of stock
+                              </span>
+                            ) : ing.isLowStock && !ing.isOutOfStock && !isArchived ? (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                                Low stock
+                              </span>
+                            ) : (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                                In stock
+                              </span>
+                            )}
+                          </div>
+                        </div>
 
-                  {/* Mobile Touch Action Buttons */}
-                  <div className="flex items-center gap-1.5 pt-1 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => setShowRestockModal(ing)}
-                      className="flex-1 min-h-[38px] rounded-xl bg-espresso text-foam text-xs font-bold py-2 px-3 text-center shadow-xs active:scale-95"
-                    >
-                      + Restock
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowAdjustModal(ing)}
-                      className="flex-1 min-h-[38px] rounded-xl border border-roast/20 bg-foam text-espresso text-xs font-bold py-2 px-3 text-center hover:bg-cream active:scale-95"
-                    >
-                      Adjust
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowEditModal(ing)}
-                      className="min-h-[38px] rounded-xl border border-roast/20 bg-foam text-roast text-xs font-bold py-2 px-3 text-center hover:bg-cream active:scale-95"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleArchiveToggle(ing)}
-                      className="min-h-[38px] rounded-xl border border-roast/15 px-2.5 py-2 text-[11px] text-roast hover:text-red-700"
-                    >
-                      {isArchived ? "Restore" : "Archive"}
-                    </button>
-                  </div>
+                        {/* Metrics Grid */}
+                        <div className="grid grid-cols-2 gap-2 text-xs bg-cream/70 rounded-xl p-2.5 border border-roast/10">
+                          <div>
+                            <span className="text-roast/70 block text-[9px] uppercase font-bold tracking-wider">Unit Cost</span>
+                            <span className="font-mono font-bold text-espresso">
+                              {unitCost !== null ? `${formatPesos(Math.round(unitCost))} / ${ing.unit}` : "No cost set"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-roast/70 block text-[9px] uppercase font-bold tracking-wider">Min Threshold</span>
+                            <span className="font-mono text-roast font-semibold">
+                              {Number(ing.lowStockThreshold)} {ing.unit}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Mobile Touch Action Buttons */}
+                        <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => setShowRestockModal(ing)}
+                            className="flex-1 min-h-[38px] rounded-xl bg-espresso text-foam text-xs font-bold py-2 px-3 text-center shadow-xs active:scale-95"
+                          >
+                            + Restock
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowAdjustModal(ing)}
+                            className="flex-1 min-h-[38px] rounded-xl border border-roast/20 bg-foam text-espresso text-xs font-bold py-2 px-3 text-center hover:bg-cream active:scale-95"
+                          >
+                            Adjust
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowEditModal(ing)}
+                            className="min-h-[38px] rounded-xl border border-roast/20 bg-foam text-roast text-xs font-bold py-2 px-3 text-center hover:bg-cream active:scale-95"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleArchiveToggle(ing)}
+                            className="min-h-[38px] rounded-xl border border-roast/15 px-2.5 py-2 text-[11px] text-roast hover:text-red-700"
+                          >
+                            {isArchived ? "Restore" : "Archive"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              </section>
+            ))}
           </div>
 
           {/* Desktop Table View (md+) */}
@@ -680,100 +803,116 @@ export default function InventoryManagement() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-roast/10 text-espresso">
-                  {filteredIngredients.map((ing) => {
-                    const isArchived = !!ing.archivedAt;
-                    const unitCost = ing.unitCostCents ? Number(ing.unitCostCents) : null;
-                    const stockNum = Number(ing.stockQty);
-
-                    return (
-                      <tr
-                        key={ing.id}
-                        className={`hover:bg-cream/40 transition ${isArchived ? "opacity-50 bg-roast/5" : ""}`}
-                      >
-                        <td className="py-3 px-4 font-semibold">
+                  {groupedIngredients.map(([category, catIngs]) => (
+                    <Fragment key={category}>
+                      <tr className="bg-cream/40 border-y border-roast/10">
+                        <td colSpan={7} className="py-2.5 px-4">
                           <div className="flex items-center gap-2">
-                            <span>{ing.name}</span>
-                            {isArchived && (
-                              <span className="rounded-full bg-roast/20 px-2 py-0.5 text-[10px] text-roast font-bold">
-                                Archived
-                              </span>
-                            )}
-                            {ing.isOutOfStock && !isArchived && (
-                              <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
-                                Out of stock
-                              </span>
-                            )}
-                            {ing.isLowStock && !ing.isOutOfStock && !isArchived && (
-                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
-                                Low stock
-                              </span>
-                            )}
+                            <span className="text-[11px] font-bold tracking-[0.15em] uppercase text-roast">
+                              {category}
+                            </span>
+                            <span className="rounded-full bg-foam px-2 py-0.5 text-[10px] font-bold text-espresso border border-roast/10">
+                              {catIngs.length}
+                            </span>
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-roast">{ing.unit}</td>
-                        <td className="py-3 px-4 font-mono font-medium">
-                          <span
-                            className={
-                              stockNum <= 0
-                                ? "text-red-600 font-bold"
-                                : ing.isLowStock
-                                ? "text-amber-700 font-bold"
-                                : "text-espresso"
-                            }
-                          >
-                            {stockNum} {ing.unit}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 font-mono">
-                          {unitCost !== null ? (
-                            <span className="font-semibold text-espresso">
-                              {formatPesos(Math.round(unitCost))} / {ing.unit}
-                            </span>
-                          ) : (
-                            <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] text-amber-900 font-medium">
-                              No cost
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 font-mono text-roast">
-                          {Number(ing.lowStockThreshold)} {ing.unit}
-                        </td>
-                        <td className="py-3 px-4 text-xs text-roast">
-                          {ing.costUpdatedAt ? new Date(ing.costUpdatedAt).toLocaleDateString() : "—"}
-                        </td>
-                        <td className="py-3 px-4 text-right space-x-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setShowRestockModal(ing)}
-                            className="rounded-lg bg-espresso px-2.5 py-1 text-xs font-semibold text-foam hover:opacity-90 transition active:scale-95"
-                          >
-                            Restock
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowAdjustModal(ing)}
-                            className="rounded-lg border border-roast/20 bg-foam px-2.5 py-1 text-xs font-semibold text-espresso hover:bg-cream transition"
-                          >
-                            Adjust
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowEditModal(ing)}
-                            className="rounded-lg border border-roast/20 bg-foam px-2.5 py-1 text-xs font-semibold text-roast hover:bg-cream transition"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleArchiveToggle(ing)}
-                            className="rounded-lg border border-roast/20 px-2 py-1 text-xs font-medium text-roast hover:text-red-700"
-                          >
-                            {isArchived ? "Unarchive" : "Archive"}
-                          </button>
-                        </td>
                       </tr>
-                    );
-                  })}
+                      {catIngs.map((ing) => {
+                        const isArchived = !!ing.archivedAt;
+                        const unitCost = ing.unitCostCents ? Number(ing.unitCostCents) : null;
+                        const stockNum = Number(ing.stockQty);
+
+                        return (
+                          <tr
+                            key={ing.id}
+                            className={`hover:bg-cream/40 transition ${isArchived ? "opacity-50 bg-roast/5" : ""}`}
+                          >
+                            <td className="py-3 px-4 font-semibold">
+                              <div className="flex items-center gap-2">
+                                <span>{ing.name}</span>
+                                {isArchived && (
+                                  <span className="rounded-full bg-roast/20 px-2 py-0.5 text-[10px] text-roast font-bold">
+                                    Archived
+                                  </span>
+                                )}
+                                {ing.isOutOfStock && !isArchived && (
+                                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                                    Out of stock
+                                  </span>
+                                )}
+                                {ing.isLowStock && !ing.isOutOfStock && !isArchived && (
+                                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                                    Low stock
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-roast">{ing.unit}</td>
+                            <td className="py-3 px-4 font-mono font-medium">
+                              <span
+                                className={
+                                  stockNum <= 0
+                                    ? "text-red-600 font-bold"
+                                    : ing.isLowStock
+                                    ? "text-amber-700 font-bold"
+                                    : "text-espresso"
+                                }
+                              >
+                                {stockNum} {ing.unit}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 font-mono">
+                              {unitCost !== null ? (
+                                <span className="font-semibold text-espresso">
+                                  {formatPesos(Math.round(unitCost))} / {ing.unit}
+                                </span>
+                              ) : (
+                                <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] text-amber-900 font-medium">
+                                  No cost
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 font-mono text-roast">
+                              {Number(ing.lowStockThreshold)} {ing.unit}
+                            </td>
+                            <td className="py-3 px-4 text-xs text-roast">
+                              {ing.costUpdatedAt ? new Date(ing.costUpdatedAt).toLocaleDateString() : "—"}
+                            </td>
+                            <td className="py-3 px-4 text-right space-x-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setShowRestockModal(ing)}
+                                className="rounded-lg bg-espresso px-2.5 py-1 text-xs font-semibold text-foam hover:opacity-90 transition active:scale-95"
+                              >
+                                Restock
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setShowAdjustModal(ing)}
+                                className="rounded-lg border border-roast/20 bg-foam px-2.5 py-1 text-xs font-semibold text-espresso hover:bg-cream transition"
+                              >
+                                Adjust
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setShowEditModal(ing)}
+                                className="rounded-lg border border-roast/20 bg-foam px-2.5 py-1 text-xs font-semibold text-roast hover:bg-cream transition"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleArchiveToggle(ing)}
+                                className="rounded-lg border border-roast/20 px-2 py-1 text-xs font-medium text-roast hover:text-red-700"
+                              >
+                                {isArchived ? "Unarchive" : "Archive"}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -784,6 +923,7 @@ export default function InventoryManagement() {
       {/* Submodals with mobile bottom-sheet styling */}
       {showAddModal && (
         <AddIngredientModal
+          existingCategories={categories}
           onClose={() => setShowAddModal(false)}
           onSuccess={() => {
             setShowAddModal(false);
@@ -817,6 +957,7 @@ export default function InventoryManagement() {
       {showEditModal && (
         <EditIngredientModal
           ingredient={showEditModal}
+          existingCategories={categories}
           onClose={() => setShowEditModal(null)}
           onSuccess={() => {
             setShowEditModal(null);
@@ -875,14 +1016,24 @@ export default function InventoryManagement() {
 }
 
 // Submodal: Add Ingredient (Mobile Bottom-Sheet / Desktop Centered)
-function AddIngredientModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+function AddIngredientModal({
+  existingCategories,
+  onClose,
+  onSuccess,
+}: {
+  existingCategories: string[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   const [name, setName] = useState("");
+  const [category, setCategory] = useState("");
   const [unit, setUnit] = useState<IngredientUnit>("G");
   const [lowStockThreshold, setLowStockThreshold] = useState("0");
   const [initialStock, setInitialStock] = useState("");
   const [initialCostPesos, setInitialCostPesos] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const datalistId = useId();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -897,6 +1048,7 @@ function AddIngredientModal({ onClose, onSuccess }: { onClose: () => void; onSuc
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
+          category: category.trim() || null,
           unit,
           lowStockThreshold: Number(lowStockThreshold) || 0,
           initialStock: initialStock ? Number(initialStock) : undefined,
@@ -935,6 +1087,22 @@ function AddIngredientModal({ onClose, onSuccess }: { onClose: () => void; onSuc
               placeholder="e.g. Espresso Beans, Fresh Milk"
               required
             />
+          </div>
+          <div>
+            <label className="font-bold uppercase tracking-wider text-[10px] text-roast block mb-1">Category</label>
+            <input
+              type="text"
+              list={datalistId}
+              className="w-full rounded-xl border border-roast/20 bg-cream px-3.5 py-2.5 text-base sm:text-xs text-espresso focus:border-espresso focus:outline-none min-h-[44px]"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="e.g. Coffee, Dairy, Syrups, Bakery"
+            />
+            <datalist id={datalistId}>
+              {existingCategories.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1251,20 +1419,24 @@ function AdjustModal({
 // Submodal: Edit Ingredient
 function EditIngredientModal({
   ingredient,
+  existingCategories,
   onClose,
   onSuccess,
 }: {
   ingredient: AdminIngredient;
+  existingCategories: string[];
   onClose: () => void;
   onSuccess: () => void;
 }) {
   const [name, setName] = useState(ingredient.name);
+  const [category, setCategory] = useState(ingredient.category ?? "");
   const [lowStockThreshold, setLowStockThreshold] = useState(ingredient.lowStockThreshold);
   const [unitCostPesos, setUnitCostPesos] = useState(
     ingredient.unitCostCents ? (Number(ingredient.unitCostCents) / 100).toFixed(4) : ""
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const datalistId = useId();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1278,6 +1450,7 @@ function EditIngredientModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
+          category: category.trim() || null,
           lowStockThreshold: Number(lowStockThreshold),
           unitCostCents,
         }),
@@ -1313,6 +1486,22 @@ function EditIngredientModal({
               onChange={(e) => setName(e.target.value)}
               required
             />
+          </div>
+          <div>
+            <label className="font-bold uppercase tracking-wider text-[10px] text-roast block mb-1">Category</label>
+            <input
+              type="text"
+              list={datalistId}
+              className="w-full rounded-xl border border-roast/20 bg-cream px-3.5 py-2.5 text-base sm:text-xs text-espresso focus:border-espresso focus:outline-none min-h-[44px]"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="e.g. Coffee, Dairy, Syrups, Bakery"
+            />
+            <datalist id={datalistId}>
+              {existingCategories.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
           </div>
           <div>
             <label className="font-bold uppercase tracking-wider text-[10px] text-roast block mb-1">

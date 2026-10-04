@@ -71,6 +71,7 @@ enum ExpenseCategory {
 model Ingredient {
   id                   String                 @id @default(cuid())
   name                 String
+  category             String?
   unit                 IngredientUnit
   stockQty             Decimal                @default(0) @db.Decimal(14, 3) // base units, may go negative
   unitCostCents        Decimal?               @db.Decimal(14, 4)             // NULL = unknown cost
@@ -86,6 +87,7 @@ model Ingredient {
   addOnIngredients    AddOnIngredient[]
 
   @@index([archivedAt])
+  @@index([category])
 }
 
 // Recipe lines: all use onDelete: Cascade from the owner, onDelete: Restrict to Ingredient

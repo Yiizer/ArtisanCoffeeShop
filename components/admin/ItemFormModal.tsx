@@ -66,6 +66,39 @@ export default function ItemFormModal({
     return map;
   }, [availableIngredients]);
 
+  // Group available ingredients by category (uncategorized last)
+  const groupedAvailableIngredients = useMemo(() => {
+    const map = new Map<string, AdminIngredient[]>();
+    for (const ing of availableIngredients) {
+      const cat = ing.category?.trim() || "Uncategorized";
+      const list = map.get(cat) ?? [];
+      list.push(ing);
+      map.set(cat, list);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => {
+      if (a === "Uncategorized") return 1;
+      if (b === "Uncategorized") return -1;
+      return a.localeCompare(b);
+    });
+  }, [availableIngredients]);
+
+  const renderIngredientOptions = (includeCost = false) => {
+    return groupedAvailableIngredients.map(([category, ings]) => (
+      <optgroup key={category} label={category}>
+        {ings.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.name} ({a.unit})
+            {includeCost
+              ? a.unitCostCents
+                ? ` — ${formatPesos(Math.round(Number(a.unitCostCents)))}/${a.unit}`
+                : " — No Cost"
+              : ""}
+          </option>
+        ))}
+      </optgroup>
+    ));
+  };
+
   // Compute Base Cost Preview
   const baseCostCents = useMemo(() => {
     if (draft.noIngredients) return 0;
@@ -353,11 +386,7 @@ export default function ItemFormModal({
                             patch({ ingredients: ings });
                           }}
                         >
-                          {availableIngredients.map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {a.name} ({a.unit}) {a.unitCostCents ? `— ${formatPesos(Math.round(Number(a.unitCostCents)))}/${a.unit}` : "— No Cost"}
-                            </option>
-                          ))}
+                          {renderIngredientOptions(true)}
                         </select>
 
                         <div className="flex items-center gap-1 w-28">
@@ -529,11 +558,7 @@ export default function ItemFormModal({
                                 patch({ sizes });
                               }}
                             >
-                              {availableIngredients.map((a) => (
-                                <option key={a.id} value={a.id}>
-                                  {a.name} ({a.unit})
-                                </option>
-                              ))}
+                              {renderIngredientOptions(false)}
                             </select>
                             <input
                               type="number"
@@ -722,11 +747,7 @@ export default function ItemFormModal({
                                 patch({ addOns });
                               }}
                             >
-                              {availableIngredients.map((ingItem) => (
-                                <option key={ingItem.id} value={ingItem.id}>
-                                  {ingItem.name} ({ingItem.unit})
-                                </option>
-                              ))}
+                              {renderIngredientOptions(false)}
                             </select>
                             <input
                               type="number"

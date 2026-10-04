@@ -14,6 +14,8 @@ import {
   archiveIngredient,
   unarchiveIngredient,
   listPendingCostReviews,
+  listIngredientsForAdmin,
+  listIngredientsForStaff,
 } from "../lib/inventory";
 import { createExpense, listExpenses } from "../lib/expenses";
 import { createMenuItem, listMenu } from "../lib/menu";
@@ -347,6 +349,50 @@ describe("Database & Concurrency Integration Suite", () => {
 
     const unarchived = await unarchiveIngredient(vanilla.id);
     expect(unarchived.archivedAt).toBeNull();
+  });
+
+  it("Ingredient category: create with category, trim whitespace, normalize empty to null, update category, and list", async () => {
+    // 1. Create with category (trimmed)
+    const oatMilk = await createIngredient({
+      name: "Oat Milk Barista",
+      category: "  Dairy & Plant-Based  ",
+      unit: "ML",
+      initialStock: 500,
+    });
+    expect(oatMilk.category).toBe("Dairy & Plant-Based");
+
+    // 2. Create with empty string / whitespace category -> null
+    const sugar = await createIngredient({
+      name: "Cane Sugar",
+      category: "   ",
+      unit: "G",
+      initialStock: 200,
+    });
+    expect(sugar.category).toBeNull();
+
+    // 3. Update category
+    const updatedSugar = await updateIngredient(sugar.id, {
+      category: "Sweeteners",
+    });
+    expect(updatedSugar.category).toBe("Sweeteners");
+
+    // 4. Update category to empty string -> null
+    const clearedSugar = await updateIngredient(sugar.id, {
+      category: "",
+    });
+    expect(clearedSugar.category).toBeNull();
+
+    // 5. listIngredientsForAdmin includes category
+    const adminList = await listIngredientsForAdmin(true);
+    const foundOat = adminList.find((i) => i.id === oatMilk.id);
+    expect(foundOat).toBeDefined();
+    expect(foundOat?.category).toBe("Dairy & Plant-Based");
+
+    // 6. listIngredientsForStaff includes category
+    const staffList = await listIngredientsForStaff();
+    const foundStaffOat = staffList.find((i) => i.id === oatMilk.id);
+    expect(foundStaffOat).toBeDefined();
+    expect(foundStaffOat?.category).toBe("Dairy & Plant-Based");
   });
 
   it("reconcile() reports zero drift across all ingredients and movements", async () => {

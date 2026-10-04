@@ -6,6 +6,7 @@ import { formatPesos } from "@/lib/format";
 type StaffIngredient = {
   id: string;
   name: string;
+  category?: string | null;
   unit: "G" | "ML" | "PC";
   stockQty: string;
   lowStockThreshold: string;
@@ -67,6 +68,21 @@ export default function StaffStockModal({
     () => ingredients.find((i) => i.id === selectedId) ?? null,
     [ingredients, selectedId]
   );
+
+  const groupedIngredients = useMemo(() => {
+    const map = new Map<string, StaffIngredient[]>();
+    for (const ing of ingredients) {
+      const cat = ing.category?.trim() || "Uncategorized";
+      const list = map.get(cat) ?? [];
+      list.push(ing);
+      map.set(cat, list);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => {
+      if (a === "Uncategorized") return 1;
+      if (b === "Uncategorized") return -1;
+      return a.localeCompare(b);
+    });
+  }, [ingredients]);
 
   function applyPackHelper(delta: number) {
     const current = Number(qtyInput) || 0;
@@ -203,11 +219,15 @@ export default function StaffStockModal({
                 onChange={(e) => setSelectedId(e.target.value)}
                 className="w-full rounded-xl border border-roast/20 bg-cream px-3.5 py-2.5 text-base sm:text-sm text-espresso focus:border-espresso focus:outline-none min-h-[44px]"
               >
-                {ingredients.map((ing) => (
-                  <option key={ing.id} value={ing.id}>
-                    {ing.name} (Current: {ing.stockQty} {ing.unit})
-                    {ing.isOutOfStock ? " — OUT OF STOCK" : ing.isLowStock ? " — LOW" : ""}
-                  </option>
+                {groupedIngredients.map(([category, ings]) => (
+                  <optgroup key={category} label={category}>
+                    {ings.map((ing) => (
+                      <option key={ing.id} value={ing.id}>
+                        {ing.name} (Current: {ing.stockQty} {ing.unit})
+                        {ing.isOutOfStock ? " — OUT OF STOCK" : ing.isLowStock ? " — LOW" : ""}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>

@@ -48,15 +48,15 @@ async function main() {
 
   console.log("Seeding ingredients and opening stock...");
   const ingredientData = [
-    { name: "Espresso Beans", unit: IngredientUnit.G, stock: 10000, cost: 1.5, low: 2000 },
-    { name: "Whole Milk", unit: IngredientUnit.ML, stock: 20000, cost: 0.12, low: 4000 },
-    { name: "Oat Milk", unit: IngredientUnit.ML, stock: 10000, cost: 0.20, low: 2000 },
-    { name: "Vanilla Syrup", unit: IngredientUnit.ML, stock: 3000, cost: 0.40, low: 500 },
-    { name: "Caramel Sauce", unit: IngredientUnit.ML, stock: 2000, cost: 0.50, low: 400 },
-    { name: "Matcha Powder", unit: IngredientUnit.G, stock: 1000, cost: 2.50, low: 200 },
-    { name: "Dark Chocolate", unit: IngredientUnit.G, stock: 2000, cost: 1.80, low: 300 },
-    { name: "Fresh Croissants", unit: IngredientUnit.PC, stock: 24, cost: 4500, low: 6 },
-    { name: "Fresh Muffins", unit: IngredientUnit.PC, stock: 20, cost: 5000, low: 5 },
+    { name: "Espresso Beans", category: "Coffee", unit: IngredientUnit.G, stock: 10000, cost: 1.5, low: 2000 },
+    { name: "Whole Milk", category: "Dairy", unit: IngredientUnit.ML, stock: 20000, cost: 0.12, low: 4000 },
+    { name: "Oat Milk", category: "Dairy", unit: IngredientUnit.ML, stock: 10000, cost: 0.20, low: 2000 },
+    { name: "Vanilla Syrup", category: "Syrups", unit: IngredientUnit.ML, stock: 3000, cost: 0.40, low: 500 },
+    { name: "Caramel Sauce", category: "Syrups", unit: IngredientUnit.ML, stock: 2000, cost: 0.50, low: 400 },
+    { name: "Matcha Powder", category: "Tea & Powders", unit: IngredientUnit.G, stock: 1000, cost: 2.50, low: 200 },
+    { name: "Dark Chocolate", category: "Syrups & Sauce", unit: IngredientUnit.G, stock: 2000, cost: 1.80, low: 300 },
+    { name: "Fresh Croissants", category: "Bakery", unit: IngredientUnit.PC, stock: 24, cost: 4500, low: 6 },
+    { name: "Fresh Muffins", category: "Bakery", unit: IngredientUnit.PC, stock: 20, cost: 5000, low: 5 },
   ];
 
   const ingredientMap = new Map<string, string>();
@@ -67,6 +67,7 @@ async function main() {
       row = await prisma.ingredient.create({
         data: {
           name: ing.name,
+          category: ing.category,
           unit: ing.unit,
           stockQty: ing.stock,
           unitCostCents: ing.cost,
@@ -81,6 +82,11 @@ async function main() {
             },
           },
         },
+      });
+    } else if (!row.category) {
+      row = await prisma.ingredient.update({
+        where: { id: row.id },
+        data: { category: ing.category },
       });
     }
     ingredientMap.set(ing.name, row.id);
