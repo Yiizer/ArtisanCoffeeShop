@@ -13,6 +13,8 @@ const emptyDraft = (): ItemDraft => ({
   category: "",
   basePricePesos: "",
   available: true,
+  noIngredients: false,
+  ingredients: [],
   sizes: [],
   addOns: [],
 });
@@ -33,14 +35,28 @@ function draftFromItem(item: AdminMenuItem): ItemDraft {
     category: item.category,
     basePricePesos: centsToPesosInput(item.basePriceCents),
     available: item.available,
+    noIngredients: item.noIngredients ?? false,
+    ingredients: (item.ingredients ?? []).map((i) => ({
+      ingredientId: i.ingredientId,
+      qty: i.qty,
+    })),
     sizes: item.sizes.map((s) => ({
       name: s.name,
       priceDeltaPesos: centsToPesosInput(s.priceDeltaCents),
+      ingredients: (s.ingredients ?? []).map((si) => ({
+        ingredientId: si.ingredientId,
+        qtyDelta: si.qtyDelta,
+      })),
     })),
     addOns: item.addOns.map((a) => ({
       name: a.name,
       pricePesos: centsToPesosInput(a.priceCents),
       available: a.available,
+      noIngredients: a.noIngredients ?? false,
+      ingredients: (a.ingredients ?? []).map((ai) => ({
+        ingredientId: ai.ingredientId,
+        qty: ai.qty,
+      })),
     })),
   };
 }
@@ -52,14 +68,38 @@ function draftToPayload(d: ItemDraft) {
     category: d.category.trim(),
     basePriceCents: pesosToCents(d.basePricePesos),
     available: d.available,
+    noIngredients: d.noIngredients,
+    ingredients: d.noIngredients
+      ? []
+      : d.ingredients
+          .filter((i) => i.ingredientId && Number(i.qty) > 0)
+          .map((i) => ({
+            ingredientId: i.ingredientId,
+            qty: i.qty,
+          })),
     sizes: d.sizes.map((s) => ({
       name: s.name.trim(),
       priceDeltaCents: pesosToCents(s.priceDeltaPesos),
+      ingredients: (s.ingredients ?? [])
+        .filter((si) => si.ingredientId && si.qtyDelta !== "")
+        .map((si) => ({
+          ingredientId: si.ingredientId,
+          qtyDelta: si.qtyDelta,
+        })),
     })),
     addOns: d.addOns.map((a) => ({
       name: a.name.trim(),
       priceCents: pesosToCents(a.pricePesos),
       available: a.available,
+      noIngredients: a.noIngredients ?? false,
+      ingredients: a.noIngredients
+        ? []
+        : (a.ingredients ?? [])
+            .filter((ai) => ai.ingredientId && Number(ai.qty) > 0)
+            .map((ai) => ({
+              ingredientId: ai.ingredientId,
+              qty: ai.qty,
+            })),
     })),
   };
 }
@@ -440,13 +480,22 @@ export default function MenuManagement() {
                     {/* Item Title, Base Price & Top Controls */}
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex-1">
-                        <div className="flex items-baseline justify-between sm:justify-start gap-2">
+                        <div className="flex items-baseline justify-between sm:justify-start gap-2 flex-wrap">
                           <h4 className="text-base sm:text-lg font-bold text-espresso leading-snug">
                             {item.name}
                           </h4>
                           <span className="font-mono text-base font-black text-roast shrink-0">
                             {formatPesos(item.basePriceCents)}
                           </span>
+                          {item.noIngredients ? (
+                            <span className="rounded-full bg-latte/15 px-2 py-0.5 text-[10px] font-bold text-roast">
+                              No Recipe Required
+                            </span>
+                          ) : !item.ingredients || item.ingredients.length === 0 ? (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                              ⚠️ Uncosted (No recipe)
+                            </span>
+                          ) : null}
                         </div>
                         {item.description && (
                           <p className="mt-1 text-xs font-medium text-roast leading-relaxed">
@@ -502,13 +551,32 @@ export default function MenuManagement() {
                         {item.sizes.map((s) => (
                           <span
                             key={s.id}
-                            className="inline-flex items-center rounded-full bg-cream px-2.5 py-0.5 text-xs font-semibold text-espresso border border-roast/10"
+                            className="inline-flex items-center gap-1.5 rounded-full bg-cream px-2.5 py-0.5 text-xs font-semibold text-espresso border border-roast/10"
                           >
-                            {s.name}
-                            <span className="ml-1 font-mono font-bold text-roast">
+                            <span>{s.name}</span>
+                            <span className="font-mono font-bold text-roast">
                               ({s.priceDeltaCents >= 0 ? "+" : "−"}
                               {formatPesos(Math.abs(s.priceDeltaCents))})
                             </span>
+                            {s.costCents != null && (
+                              <span className="font-mono text-[10px] text-latte">
+                                Cost: {formatPesos(s.costCents)}
+                              </span>
+                            )}
+                            {s.marginPct != null && (
+                              <span
+                                className={
+                                  "rounded px-1 text-[10px] font-bold " +
+                                  (s.marginPct >= 0.6
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : s.marginPct >= 0.3
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-red-100 text-red-800")
+                                }
+                              >
+                                {Math.round(s.marginPct * 100)}%
+                              </span>
+                            )}
                           </span>
                         ))}
                       </div>

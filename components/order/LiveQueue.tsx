@@ -8,7 +8,7 @@ const POLL_MS = 4000;
 type OrderStatus = "PENDING" | "READY" | "COMPLETED" | "CANCELLED";
 type QueueAddOn  = { id: string; addOn: { name: string; priceCents: number } };
 type QueueItem   = { id: string; quantity: number; notes?: string | null; menuItem: { name: string }; size?: { name: string } | null; addOns: QueueAddOn[] };
-type QueueOrder  = { id: string; dailyNumber: number; customerName?: string | null; status: OrderStatus; paymentMethod: "CASH" | "GCASH"; paymentRef?: string | null; isPaid: boolean; refunded: boolean; totalPriceCents: number; items: QueueItem[] };
+type QueueOrder  = { id: string; dailyNumber: number; customerName?: string | null; status: OrderStatus; paymentMethod: "CASH" | "GCASH"; paymentRef?: string | null; isPaid: boolean; refunded: boolean; totalPriceCents: number; hasStockUsage?: boolean; items: QueueItem[] };
 
 const NEXT: Partial<Record<OrderStatus, OrderStatus>> = { PENDING: "READY", READY: "COMPLETED" };
 
@@ -23,6 +23,7 @@ export default function LiveQueue() {
   const [orders, setOrders] = useState<QueueOrder[]>([]);
   const [error, setError]   = useState<string | null>(null);
   const [busyId, setBusy]   = useState<string | null>(null);
+  const [cancelPromptOrder, setCancelPromptOrder] = useState<QueueOrder | null>(null);
   const mounted = useRef(true);
 
   const fetchOrders = useCallback(async () => {
@@ -53,14 +54,27 @@ export default function LiveQueue() {
     finally { setBusy(null); }
   }
 
-  async function cancel(id: string) {
+  async function cancel(id: string, wasMade: boolean = false) {
     setBusy(id);
     try {
-      const r = await fetch(`/api/orders/${id}`, { method: "DELETE" });
-      if (!r.ok) throw new Error(`Cancel failed (${r.status})`);
+      const url = `/api/orders/${id}?wasMade=${wasMade}`;
+      const r = await fetch(url, { method: "DELETE" });
+      if (!r.ok) {
+        const err = await r.json().catch(() => null);
+        throw new Error(err?.error ?? `Cancel failed (${r.status})`);
+      }
+      setCancelPromptOrder(null);
       await fetchOrders();
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to cancel."); }
     finally { setBusy(null); }
+  }
+
+  function handleCancelClick(order: QueueOrder) {
+    if ((order.status === "READY" || order.status === "COMPLETED") && order.hasStockUsage) {
+      setCancelPromptOrder(order);
+    } else {
+      cancel(order.id, false);
+    }
   }
 
   function describeItem(item: QueueItem) {
@@ -134,7 +148,7 @@ export default function LiveQueue() {
                             Mark paid
                           </button>
                         )}
-                        <button type="button" disabled={busy} onClick={() => cancel(order.id)}
+                        <button type="button" disabled={busy} onClick={() => handleCancelClick(order)}
                           className="flex min-h-[44px] items-center rounded-xl border border-red-400 px-5 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40">
                           Cancel
                         </button>
@@ -190,6 +204,49 @@ export default function LiveQueue() {
             </div>
           )}
         </>
+      )}
+
+      {/* Was the drink made? Modal Dialog */}
+      {cancelPromptOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in">
+          <div className="w-full max-w-md rounded-2xl bg-foam p-6 shadow-xl border border-roast/20">
+            <h3 className="text-lg font-bold text-espresso">
+              Cancel Order #{cancelPromptOrder.dailyNumber}
+            </h3>
+            <p className="mt-2 text-sm text-roast">
+              This order was in progress (<strong className="uppercase">{cancelPromptOrder.status}</strong>) and stock was deducted.
+            </p>
+            <p className="mt-4 text-base font-bold text-espresso">
+              Was the drink already prepared?
+            </p>
+            <div className="mt-5 flex flex-col gap-2.5">
+              <button
+                type="button"
+                disabled={busyId === cancelPromptOrder.id}
+                onClick={() => cancel(cancelPromptOrder.id, true)}
+                className="flex min-h-[44px] items-center justify-center rounded-xl bg-red-700 px-4 py-2.5 text-sm font-bold text-foam hover:bg-red-800 disabled:opacity-40 active:scale-95 transition-all"
+              >
+                Yes, drink was made (Record as waste)
+              </button>
+              <button
+                type="button"
+                disabled={busyId === cancelPromptOrder.id}
+                onClick={() => cancel(cancelPromptOrder.id, false)}
+                className="flex min-h-[44px] items-center justify-center rounded-xl border-2 border-espresso bg-foam px-4 py-2.5 text-sm font-bold text-espresso hover:bg-cream disabled:opacity-40 active:scale-95 transition-all"
+              >
+                No, drink was not made (Return stock)
+              </button>
+              <button
+                type="button"
+                disabled={busyId === cancelPromptOrder.id}
+                onClick={() => setCancelPromptOrder(null)}
+                className="mt-1 flex min-h-[44px] items-center justify-center rounded-xl text-sm font-semibold text-roast hover:bg-latte/20 disabled:opacity-40 active:scale-95 transition-all"
+              >
+                Keep Order (Dismiss)
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

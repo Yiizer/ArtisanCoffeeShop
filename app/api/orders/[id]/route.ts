@@ -1,9 +1,7 @@
 // /api/orders/[id] route handler.
 //   PATCH  → status advancement, payment confirmation, or an items edit
-//            (items edits past RECEIVED are rejected with 409 by the service).
-//   DELETE → cancel the order (sets refunded when it was paid); the order stays
-//            counted in daily numbering.
-// In Next.js 15 App Router, dynamic route params are async and must be awaited.
+//            (status to CANCELLED rejected with 400; modifications from CANCELLED rejected with 409).
+//   DELETE → cancel the order (?wasMade=true|false for READY/COMPLETED orders).
 
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -15,15 +13,12 @@ import {
 } from "@/lib/orders";
 import type { OrderStatus } from "@/lib/types";
 import { toErrorResponse } from "@/lib/apiError";
+import { requireAuth } from "@/lib/auth-server";
 
 export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-/**
- * Derive the OrderPatch from a request body. An explicit `kind` is honored;
- * otherwise the shape is inferred from the fields present.
- */
 function toOrderPatch(body: unknown): OrderPatch {
   if (body == null || typeof body !== "object") {
     throw new OrderServiceError(400, "Missing patch payload.");
@@ -74,20 +69,26 @@ function toOrderPatch(body: unknown): OrderPatch {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
+    const user = await requireAuth(request);
     const { id } = await context.params;
     const body = await request.json();
     const patch = toOrderPatch(body);
-    const order = await updateOrder(id, patch);
+    const order = await updateOrder(id, patch, user.id);
     return NextResponse.json(order);
   } catch (err) {
     return toErrorResponse(err);
   }
 }
 
-export async function DELETE(_request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
+    const user = await requireAuth(request);
     const { id } = await context.params;
-    const order = await cancelOrder(id);
+    const wasMadeParam = request.nextUrl.searchParams.get("wasMade");
+    const wasMade =
+      wasMadeParam === "true" ? true : wasMadeParam === "false" ? false : undefined;
+
+    const order = await cancelOrder(id, { wasMade, cancelledById: user.id });
     return NextResponse.json(order);
   } catch (err) {
     return toErrorResponse(err);

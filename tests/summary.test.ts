@@ -10,6 +10,12 @@ vi.mock("../lib/db", () => {
       order: {
         findMany: vi.fn(),
       },
+      stockMovement: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      expense: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
     },
   };
 });
@@ -47,8 +53,8 @@ const SEED_ORDERS: SeedOrder[] = [
   { status: "CANCELLED", isPaid: true, refunded: true, paymentMethod: "GCASH", totalPriceCents: 2000, createdAt: withinDay("2024-06-05") },
   // 2024-06-04 (Tuesday)
   { status: "COMPLETED", isPaid: true, refunded: false, paymentMethod: "CASH", totalPriceCents: 7000, createdAt: withinDay("2024-06-04") },
-  // 2024-06-03 (Monday) — a RECEIVED, not-yet-paid order still counts toward revenue
-  { status: "RECEIVED", isPaid: false, refunded: false, paymentMethod: "CASH", totalPriceCents: 4000, createdAt: withinDay("2024-06-03") },
+  // 2024-06-03 (Monday) — a PENDING, not-yet-paid order still counts toward revenue
+  { status: "PENDING", isPaid: false, refunded: false, paymentMethod: "CASH", totalPriceCents: 4000, createdAt: withinDay("2024-06-03") },
 ];
 
 beforeEach(() => {

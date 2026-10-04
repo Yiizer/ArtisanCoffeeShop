@@ -5,11 +5,16 @@ import { OrderStatus } from "../lib/types";
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
     menuItem: { findMany: vi.fn() },
+    ingredient: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn(), findUnique: vi.fn() },
+    dailyCounter: { upsert: vi.fn().mockResolvedValue({ lastNumber: 4 }) },
+    stockMovement: { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     order: {
       count: vi.fn(),
+      aggregate: vi.fn().mockResolvedValue({ _max: { dailyNumber: 3 } }),
       create: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     orderItem: { deleteMany: vi.fn() },
     $transaction: vi.fn(),
@@ -187,12 +192,16 @@ describe("updateOrder items edit guard (HTTP 409)", () => {
   });
 
   it("accepts an items edit while PENDING and recomputes the total", async () => {
-    mockPrisma.order.findUnique.mockResolvedValue({ status: OrderStatus.PENDING });
+    mockPrisma.order.findUnique.mockResolvedValue({ id: "order-1", status: OrderStatus.PENDING, version: 1 });
     const tx = {
+      menuItem: mockPrisma.menuItem,
+      ingredient: mockPrisma.ingredient,
+      stockMovement: mockPrisma.stockMovement,
       orderItem: { deleteMany: vi.fn().mockResolvedValue({}) },
       order: {
         update: vi.fn().mockResolvedValue({}),
-        findUnique: vi.fn().mockResolvedValue({ id: "order-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUnique: vi.fn().mockResolvedValue({ id: "order-1", status: OrderStatus.PENDING, version: 1 }),
       },
     };
     mockPrisma.$transaction.mockImplementation(async (cb: any) => cb(tx));

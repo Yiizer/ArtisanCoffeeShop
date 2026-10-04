@@ -6,6 +6,7 @@ export type UserRole = "STAFF" | "ADMIN";
 
 export type AuthPayload = {
   userId: string;
+  id?: string; // alias for userId
   username: string;
   name: string;
   role: UserRole;
@@ -151,11 +152,17 @@ async function getHmacKey(): Promise<CryptoKey> {
  * Create a signed stateless session token.
  */
 export async function createAuthToken(
-  user: Omit<AuthPayload, "exp">,
+  user: Omit<AuthPayload, "exp" | "id"> & { id?: string },
   ttlSeconds: number = TOKEN_TTL_SECONDS
 ): Promise<string> {
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
-  const payload: AuthPayload = { ...user, exp };
+  const userId = user.userId || user.id || "";
+  const payload: AuthPayload = {
+    ...user,
+    userId,
+    id: userId,
+    exp,
+  };
 
   const payloadJson = JSON.stringify(payload);
   const payloadB64 = arrayBufferToBase64Url(stringToUint8Array(payloadJson).buffer);
@@ -198,6 +205,9 @@ export async function verifyAuthToken(token: string): Promise<AuthPayload | null
       new Uint8Array(base64UrlToArrayBuffer(payloadB64))
     );
     const payload = JSON.parse(payloadJson) as AuthPayload;
+    if (payload.userId && !payload.id) {
+      payload.id = payload.userId;
+    }
 
     const now = Math.floor(Date.now() / 1000);
     if (payload.exp < now) {

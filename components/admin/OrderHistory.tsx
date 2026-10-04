@@ -69,10 +69,10 @@ export default function OrderHistory() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-roast/10 pb-4">
         <div>
           <span className="text-[0.65rem] font-bold tracking-[0.22em] uppercase text-roast block">
-            Analytics
+            Financials & Analytics
           </span>
           <h2 className="text-xl sm:text-2xl font-black tracking-tight text-espresso">
-            Order History
+            Profit & Order History
           </h2>
         </div>
 
@@ -146,24 +146,86 @@ export default function OrderHistory() {
 }
 
 function SummaryCard({ summary }: { summary: Summary }) {
-  const stats = [
-    { label: "Gross Revenue", value: formatPesos(summary.revenueCents), highlight: true },
-    { label: "Refunded",      value: formatPesos(summary.refundedCents) },
-    { label: "Total Orders",  value: String(summary.totalOrders) },
-    { label: "Cancelled",     value: String(summary.cancelledOrders) },
-    { label: "Cash Sales",    value: formatPesos(summary.cashCents) },
-    { label: "GCash Sales",   value: formatPesos(summary.gcashCents) },
-  ];
+  const marginDisplay = summary.marginPct !== null ? `${(summary.marginPct * 100).toFixed(1)}%` : "—";
+
   return (
-    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-      {stats.map((s) => (
-        <div key={s.label} className="rounded-2xl border border-roast/15 bg-foam p-3.5 shadow-2xs">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-roast/70">{s.label}</p>
-          <p className={"mt-1 font-mono text-base font-black " + (s.highlight ? "text-espresso" : "text-roast")}>
-            {s.value}
+    <div className="space-y-3">
+      {/* Primary Financial Overview Cards */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-7">
+        <div className="rounded-2xl border border-roast/15 bg-foam p-3.5 shadow-2xs">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-roast/70">Revenue</p>
+          <p className="mt-1 font-mono text-base font-black text-espresso">
+            {formatPesos(summary.revenueCents)}
           </p>
+          <p className="text-[10px] text-roast/60 mt-0.5">{summary.totalOrders} orders ({summary.cancelledOrders} cancelled)</p>
         </div>
-      ))}
+
+        <div className="rounded-2xl border border-roast/15 bg-foam p-3.5 shadow-2xs">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-roast/70">COGS (Recipes)</p>
+          <p className="mt-1 font-mono text-base font-bold text-roast">
+            {formatPesos(summary.cogsCents)}
+          </p>
+          <p className="text-[10px] text-roast/60 mt-0.5">Ingredients cost</p>
+        </div>
+
+        <div className="rounded-2xl border border-roast/15 bg-foam p-3.5 shadow-2xs">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-roast/70">Gross Profit</p>
+          <p className="mt-1 font-mono text-base font-black text-espresso">
+            {formatPesos(summary.grossProfitCents)}
+          </p>
+          <p className="text-[10px] font-bold text-emerald-700 mt-0.5">Margin: {marginDisplay}</p>
+        </div>
+
+        <div className="rounded-2xl border border-roast/15 bg-foam p-3.5 shadow-2xs">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-roast/70">Waste Loss</p>
+          <p className="mt-1 font-mono text-base font-bold text-red-700">
+            -{formatPesos(summary.wasteCents)}
+          </p>
+          <p className="text-[10px] text-roast/60 mt-0.5">Spills & damaged</p>
+        </div>
+
+        <div className="rounded-2xl border border-roast/15 bg-foam p-3.5 shadow-2xs">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-roast/70">Stock Adjustments</p>
+          <p className={`mt-1 font-mono text-base font-bold ${summary.adjustmentsCents > 0 ? "text-red-700" : summary.adjustmentsCents < 0 ? "text-emerald-700" : "text-roast"}`}>
+            {summary.adjustmentsCents > 0 ? `-${formatPesos(summary.adjustmentsCents)}` : summary.adjustmentsCents < 0 ? `+${formatPesos(-summary.adjustmentsCents)}` : "₱0.00"}
+          </p>
+          <p className="text-[10px] text-roast/60 mt-0.5">Net inventory count</p>
+        </div>
+
+        <div className="rounded-2xl border border-roast/15 bg-foam p-3.5 shadow-2xs">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-roast/70">Expenses</p>
+          <p className="mt-1 font-mono text-base font-bold text-red-700">
+            -{formatPesos(summary.expensesCents)}
+          </p>
+          <p className="text-[10px] text-roast/60 mt-0.5">Rent, wages, supplies</p>
+        </div>
+
+        <div className="rounded-2xl border-2 border-espresso bg-cream/70 p-3.5 shadow-sm col-span-2 sm:col-span-1">
+          <p className="text-[10px] font-extrabold uppercase tracking-wider text-espresso">Net Profit</p>
+          <p className={`mt-1 font-mono text-lg font-black ${summary.netProfitCents >= 0 ? "text-emerald-800" : "text-red-700"}`}>
+            {formatPesos(summary.netProfitCents)}
+          </p>
+          <p className="text-[10px] font-bold text-espresso/70 mt-0.5">After all deductions</p>
+        </div>
+      </div>
+
+      {/* Notices for uncosted revenue or unvalued movements */}
+      {(summary.uncostedRevenueCents > 0 || summary.unvaluedMovementCount > 0) && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900 flex flex-col sm:flex-row gap-2 justify-between">
+          <div className="space-y-1">
+            {summary.uncostedRevenueCents > 0 && (
+              <p>
+                ⚠️ <strong>{formatPesos(summary.uncostedRevenueCents)}</strong> in revenue is from items without a fully costed recipe and is excluded from profit calculations.
+              </p>
+            )}
+            {summary.unvaluedMovementCount > 0 && (
+              <p>
+                ⚠️ <strong>{summary.unvaluedMovementCount}</strong> waste or stock adjustment records had no unit cost and could not be valued into net profit.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -186,7 +248,7 @@ function DayTable({ orders }: { orders: AdminOrder[] }) {
 
   return (
     <div className="space-y-3">
-      {/* Mobile Card List for phones */}
+      {/* Mobile Card List */}
       <div className="space-y-3 sm:hidden">
         {orders.map((o) => (
           <div key={o.id} className="rounded-2xl border border-roast/15 bg-foam p-4 shadow-2xs space-y-2">
@@ -198,67 +260,55 @@ function DayTable({ orders }: { orders: AdminOrder[] }) {
                 {o.status}
               </span>
             </div>
-
-            <ul className="text-xs text-roast space-y-0.5 border-t border-roast/10 pt-2">
-              {o.items.map((it) => (
-                <li key={it.id}>
-                  {it.quantity}× {it.menuItem.name}
-                  {it.size ? ` (${it.size.name})` : ""}
-                  {it.addOns.length > 0 ? ` + ${it.addOns.map((a) => a.addOn.name).join(", ")}` : ""}
-                </li>
-              ))}
-            </ul>
-
-            <div className="flex items-center justify-between border-t border-roast/10 pt-2 text-xs">
-              <span className="text-roast/80">
-                {o.paymentMethod} {o.isPaid ? "· Paid" : "· Unpaid"}{o.refunded ? " (Refunded)" : ""}
-              </span>
-              <span className="font-mono font-bold text-sm text-espresso">
-                {formatPesos(o.totalPriceCents)}
+            <p className="text-xs text-roast">
+              {o.items.map((i) => `${i.quantity}× ${i.menuItem.name}`).join(", ")}
+            </p>
+            <div className="flex justify-between items-center text-xs pt-1 border-t border-roast/10 font-mono">
+              <span className="font-bold text-espresso">{formatPesos(o.totalPriceCents)}</span>
+              <span className="text-roast">
+                Cost: {o.costCents !== null && o.costCents !== undefined ? formatPesos(o.costCents) : "—"}
               </span>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Desktop / Tablet Table */}
-      <div className="hidden sm:block overflow-x-auto rounded-2xl border border-roast/15 bg-foam shadow-2xs">
-        <table className="min-w-full divide-y divide-roast/10 text-xs">
-          <thead className="bg-cream/70 text-left uppercase tracking-wider text-roast font-bold">
+      {/* Desktop Table */}
+      <div className="hidden sm:block overflow-hidden rounded-2xl border border-roast/15 bg-foam shadow-2xs">
+        <table className="w-full text-left text-xs">
+          <thead className="border-b border-roast/10 bg-cream/50 text-[10px] font-bold uppercase tracking-wider text-roast">
             <tr>
-              <th className="px-4 py-3">#</th>
-              <th className="px-4 py-3">Customer</th>
-              <th className="px-4 py-3">Items</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Payment</th>
-              <th className="px-4 py-3 text-right">Total</th>
+              <th className="py-3 px-4">#</th>
+              <th className="py-3 px-4">Customer</th>
+              <th className="py-3 px-4">Items</th>
+              <th className="py-3 px-4">Status</th>
+              <th className="py-3 px-4">Payment</th>
+              <th className="py-3 px-4 text-right">Cost</th>
+              <th className="py-3 px-4 text-right">Total</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-roast/5">
+          <tbody className="divide-y divide-roast/10">
             {orders.map((o) => (
-              <tr key={o.id} className="align-top hover:bg-cream/40 transition-colors">
-                <td className="px-4 py-3 font-bold text-espresso">#{o.dailyNumber}</td>
-                <td className="px-4 py-3 font-medium text-espresso">{o.customerName || "—"}</td>
-                <td className="px-4 py-3 text-roast">
-                  <ul className="space-y-0.5">
-                    {o.items.map((it) => (
-                      <li key={it.id}>
-                        {it.quantity}× {it.menuItem.name}
-                        {it.size ? ` (${it.size.name})` : ""}
-                        {it.addOns.length > 0 ? ` + ${it.addOns.map((a) => a.addOn.name).join(", ")}` : ""}
-                      </li>
-                    ))}
-                  </ul>
+              <tr key={o.id} className="hover:bg-cream/40 transition">
+                <td className="py-3 px-4 font-bold text-espresso">#{o.dailyNumber}</td>
+                <td className="py-3 px-4 text-roast">{o.customerName || "—"}</td>
+                <td className="py-3 px-4 text-roast max-w-xs truncate">
+                  {o.items.map((i) => `${i.quantity}× ${i.menuItem.name}${i.size?.name ? ` (${i.size.name})` : ""}`).join(", ")}
                 </td>
-                <td className="px-4 py-3">
-                  <span className={"rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase border " + (STATUS_CLS[o.status] ?? "bg-cream text-roast")}>
+                <td className="py-3 px-4">
+                  <span className={"rounded-full px-2 py-0.5 text-[10px] font-bold uppercase border " + (STATUS_CLS[o.status] ?? "bg-cream text-roast")}>
                     {o.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-roast font-medium">
-                  {o.paymentMethod}{o.isPaid ? " · Paid" : " · Unpaid"}{o.refunded ? " · Refunded" : ""}
+                <td className="py-3 px-4 text-roast">
+                  {o.paymentMethod} {o.isPaid ? "· Paid" : "· Unpaid"} {o.refunded ? "(Refunded)" : ""}
                 </td>
-                <td className="px-4 py-3 text-right font-mono font-bold text-sm text-espresso">{formatPesos(o.totalPriceCents)}</td>
+                <td className="py-3 px-4 text-right font-mono text-roast">
+                  {o.costCents !== null && o.costCents !== undefined ? formatPesos(o.costCents) : "—"}
+                </td>
+                <td className="py-3 px-4 text-right font-mono font-bold text-espresso">
+                  {formatPesos(o.totalPriceCents)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -270,23 +320,21 @@ function DayTable({ orders }: { orders: AdminOrder[] }) {
 
 function WeekList({ summary, onSelectDay }: { summary: Summary; onSelectDay: (d: string) => void }) {
   return (
-    <ul className="divide-y divide-roast/10 rounded-2xl border border-roast/15 bg-foam overflow-hidden shadow-2xs">
+    <div className="space-y-2">
       {summary.dailyBreakdown.map((d) => (
-        <li key={d.date}>
-          <button
-            type="button"
-            onClick={() => onSelectDay(d.date)}
-            className="flex w-full items-center justify-between px-4 py-3 text-left text-xs sm:text-sm hover:bg-cream/50 active:bg-cream transition-colors"
-          >
-            <span className="font-bold text-espresso">{dayLabel(d.date)}</span>
-            <span className="flex items-center gap-3">
-              <span className="text-roast text-xs">{d.orders} {d.orders === 1 ? "order" : "orders"}</span>
-              <span className="font-mono font-bold text-espresso">{formatPesos(d.revenueCents)}</span>
-              <span className="text-roast text-xs">➔</span>
-            </span>
-          </button>
-        </li>
+        <button
+          key={d.date}
+          type="button"
+          onClick={() => onSelectDay(d.date)}
+          className="flex w-full items-center justify-between rounded-xl border border-roast/15 bg-foam p-3 text-xs hover:bg-cream/60 transition shadow-2xs"
+        >
+          <span className="font-semibold text-espresso">{dayLabel(d.date)}</span>
+          <div className="flex gap-4 font-mono">
+            <span className="text-roast">{d.orders} {d.orders === 1 ? "order" : "orders"}</span>
+            <span className="font-bold text-espresso">{formatPesos(d.revenueCents)}</span>
+          </div>
+        </button>
       ))}
-    </ul>
+    </div>
   );
 }

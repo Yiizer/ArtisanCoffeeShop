@@ -1,182 +1,18 @@
 /**
- * Seed script for the Coffee Shop Ordering System (v1 prototype).
- *
- * Seeds placeholder menu data only:
- *   - several categories
- *   - menu items with base prices in integer centavos
- *   - sizes with price deltas (centavos, may be negative)
- *   - add-ons with prices (centavos) and availability flags
- *
- * It intentionally seeds NO orders and NO staff/user/role accounts — this is a
- * no-auth prototype and orders are created at runtime through the app.
- *
- * All monetary values below are integer centavos (e.g. 15000 = ₱150.00).
+ * Seed script for the Coffee Shop Ordering & Inventory System.
+ * Seeds menu items, ingredients with stock & costs, recipes, and default accounts.
  */
-import { PrismaClient, UserRole } from "@prisma/client";
+import { PrismaClient, UserRole, IngredientUnit, MovementReason } from "@prisma/client";
 import { hashPassword } from "../lib/auth";
 
 const prisma = new PrismaClient();
 
-type SeedSize = { name: string; priceDeltaCents: number };
-type SeedAddOn = { name: string; priceCents: number; available: boolean };
-type SeedItem = {
-  name: string;
-  description?: string;
-  basePriceCents: number;
-  category: string;
-  available: boolean;
-  sizes: SeedSize[];
-  addOns: SeedAddOn[];
-};
-
-// Common reusable size/add-on presets keep the placeholder data readable.
-const drinkSizes: SeedSize[] = [
-  { name: "Small", priceDeltaCents: -1500 },
-  { name: "Medium", priceDeltaCents: 0 },
-  { name: "Large", priceDeltaCents: 2000 },
-];
-
-const drinkAddOns: SeedAddOn[] = [
-  { name: "Extra Shot", priceCents: 3000, available: true },
-  { name: "Oat Milk", priceCents: 2500, available: true },
-  { name: "Vanilla Syrup", priceCents: 2000, available: true },
-  { name: "Whipped Cream", priceCents: 1500, available: false },
-];
-
-const menuItems: SeedItem[] = [
-  // --- Espresso ---
-  {
-    name: "Espresso",
-    description: "A concentrated single shot of our house blend.",
-    basePriceCents: 9000,
-    category: "Espresso",
-    available: true,
-    sizes: [
-      { name: "Single", priceDeltaCents: 0 },
-      { name: "Double", priceDeltaCents: 2500 },
-    ],
-    addOns: [{ name: "Extra Shot", priceCents: 3000, available: true }],
-  },
-  {
-    name: "Cappuccino",
-    description: "Espresso with steamed milk and a thick layer of foam.",
-    basePriceCents: 13000,
-    category: "Espresso",
-    available: true,
-    sizes: drinkSizes,
-    addOns: drinkAddOns,
-  },
-  {
-    name: "Caramel Macchiato",
-    description: "Vanilla, steamed milk, espresso, and caramel drizzle.",
-    basePriceCents: 16000,
-    category: "Espresso",
-    available: true,
-    sizes: drinkSizes,
-    addOns: drinkAddOns,
-  },
-
-  // --- Brewed Coffee ---
-  {
-    name: "House Drip Coffee",
-    description: "Freshly brewed medium-roast drip coffee.",
-    basePriceCents: 10000,
-    category: "Brewed Coffee",
-    available: true,
-    sizes: drinkSizes,
-    addOns: [
-      { name: "Oat Milk", priceCents: 2500, available: true },
-      { name: "Vanilla Syrup", priceCents: 2000, available: true },
-    ],
-  },
-  {
-    name: "Cold Brew",
-    description: "Slow-steeped for 18 hours, smooth and low-acid.",
-    basePriceCents: 14000,
-    category: "Brewed Coffee",
-    available: true,
-    sizes: [
-      { name: "Regular", priceDeltaCents: 0 },
-      { name: "Large", priceDeltaCents: 2500 },
-    ],
-    addOns: [
-      { name: "Extra Shot", priceCents: 3000, available: true },
-      { name: "Sweet Cream", priceCents: 2000, available: true },
-    ],
-  },
-
-  // --- Non-Coffee ---
-  {
-    name: "Matcha Latte",
-    description: "Stone-ground matcha with steamed milk.",
-    basePriceCents: 15000,
-    category: "Non-Coffee",
-    available: true,
-    sizes: drinkSizes,
-    addOns: [
-      { name: "Oat Milk", priceCents: 2500, available: true },
-      { name: "Honey", priceCents: 1500, available: true },
-    ],
-  },
-  {
-    name: "Hot Chocolate",
-    description: "Rich dark chocolate steamed with milk.",
-    basePriceCents: 13000,
-    category: "Non-Coffee",
-    available: false,
-    sizes: drinkSizes,
-    addOns: [{ name: "Whipped Cream", priceCents: 1500, available: true }],
-  },
-
-  // --- Pastries ---
-  {
-    name: "Butter Croissant",
-    description: "Flaky, all-butter croissant baked fresh daily.",
-    basePriceCents: 8500,
-    category: "Pastries",
-    available: true,
-    sizes: [],
-    addOns: [{ name: "Strawberry Jam", priceCents: 1000, available: true }],
-  },
-  {
-    name: "Blueberry Muffin",
-    description: "Loaded with wild blueberries.",
-    basePriceCents: 9500,
-    category: "Pastries",
-    available: true,
-    sizes: [],
-    addOns: [],
-  },
-];
-
 async function main() {
-  console.log("Seeding placeholder menu data...");
-
-  for (const item of menuItems) {
-    const existing = await prisma.menuItem.findFirst({
-      where: { name: item.name },
-    });
-    if (!existing) {
-      await prisma.menuItem.create({
-        data: {
-          name: item.name,
-          description: item.description,
-          basePriceCents: item.basePriceCents,
-          category: item.category,
-          available: item.available,
-          sizes: { create: item.sizes },
-          addOns: { create: item.addOns },
-        },
-      });
-    }
-  }
-
-  // Seed default admin and staff accounts
-  console.log("Seeding default user accounts...");
+  console.log("Seeding users...");
   const adminPassHash = await hashPassword("admin123");
   const cashierPassHash = await hashPassword("cashier123");
 
-  await prisma.user.upsert({
+  const adminUser = await prisma.user.upsert({
     where: { username: "admin" },
     update: {
       passwordHash: adminPassHash,
@@ -210,9 +46,216 @@ async function main() {
     },
   });
 
-  const count = await prisma.menuItem.count();
+  console.log("Seeding ingredients and opening stock...");
+  const ingredientData = [
+    { name: "Espresso Beans", unit: IngredientUnit.G, stock: 10000, cost: 1.5, low: 2000 },
+    { name: "Whole Milk", unit: IngredientUnit.ML, stock: 20000, cost: 0.12, low: 4000 },
+    { name: "Oat Milk", unit: IngredientUnit.ML, stock: 10000, cost: 0.20, low: 2000 },
+    { name: "Vanilla Syrup", unit: IngredientUnit.ML, stock: 3000, cost: 0.40, low: 500 },
+    { name: "Caramel Sauce", unit: IngredientUnit.ML, stock: 2000, cost: 0.50, low: 400 },
+    { name: "Matcha Powder", unit: IngredientUnit.G, stock: 1000, cost: 2.50, low: 200 },
+    { name: "Dark Chocolate", unit: IngredientUnit.G, stock: 2000, cost: 1.80, low: 300 },
+    { name: "Fresh Croissants", unit: IngredientUnit.PC, stock: 24, cost: 4500, low: 6 },
+    { name: "Fresh Muffins", unit: IngredientUnit.PC, stock: 20, cost: 5000, low: 5 },
+  ];
+
+  const ingredientMap = new Map<string, string>();
+
+  for (const ing of ingredientData) {
+    let row = await prisma.ingredient.findFirst({ where: { name: ing.name } });
+    if (!row) {
+      row = await prisma.ingredient.create({
+        data: {
+          name: ing.name,
+          unit: ing.unit,
+          stockQty: ing.stock,
+          unitCostCents: ing.cost,
+          lowStockThreshold: ing.low,
+          movements: {
+            create: {
+              qtyChange: ing.stock,
+              unitCostCents: ing.cost,
+              reason: MovementReason.OPENING,
+              note: "Opening inventory stock",
+              createdById: adminUser.id,
+            },
+          },
+        },
+      });
+    }
+    ingredientMap.set(ing.name, row.id);
+  }
+
+  console.log("Seeding menu items & recipes...");
+  const drinkSizes = [
+    { name: "Small", priceDeltaCents: -1500 },
+    { name: "Medium", priceDeltaCents: 0 },
+    { name: "Large", priceDeltaCents: 2000 },
+  ];
+
+  const drinkAddOns = [
+    { name: "Extra Shot", priceCents: 3000, available: true },
+    { name: "Oat Milk", priceCents: 2500, available: true },
+    { name: "Vanilla Syrup", priceCents: 2000, available: true },
+  ];
+
+  const menuItems = [
+    {
+      name: "Espresso",
+      description: "A concentrated single shot of our house blend.",
+      basePriceCents: 9000,
+      category: "Espresso",
+      available: true,
+      noIngredients: false,
+      ingredients: [{ name: "Espresso Beans", qty: 18 }],
+      sizes: [
+        { name: "Single", priceDeltaCents: 0, deltas: [] },
+        { name: "Double", priceDeltaCents: 2500, deltas: [{ name: "Espresso Beans", qtyDelta: 18 }] },
+      ],
+      addOns: [{ name: "Extra Shot", priceCents: 3000, available: true, ingName: "Espresso Beans", qty: 18 }],
+    },
+    {
+      name: "Cappuccino",
+      description: "Espresso with steamed milk and a thick layer of foam.",
+      basePriceCents: 13000,
+      category: "Espresso",
+      available: true,
+      noIngredients: false,
+      ingredients: [
+        { name: "Espresso Beans", qty: 18 },
+        { name: "Whole Milk", qty: 180 },
+      ],
+      sizes: [
+        { name: "Small", priceDeltaCents: -1500, deltas: [{ name: "Whole Milk", qtyDelta: -40 }] },
+        { name: "Medium", priceDeltaCents: 0, deltas: [] },
+        { name: "Large", priceDeltaCents: 2000, deltas: [{ name: "Whole Milk", qtyDelta: 80 }] },
+      ],
+      addOns: [
+        { name: "Extra Shot", priceCents: 3000, available: true, ingName: "Espresso Beans", qty: 18 },
+        { name: "Oat Milk", priceCents: 2500, available: true, ingName: "Oat Milk", qty: 180 },
+        { name: "Vanilla Syrup", priceCents: 2000, available: true, ingName: "Vanilla Syrup", qty: 20 },
+      ],
+    },
+    {
+      name: "Caramel Macchiato",
+      description: "Vanilla, steamed milk, espresso, and caramel drizzle.",
+      basePriceCents: 16000,
+      category: "Espresso",
+      available: true,
+      noIngredients: false,
+      ingredients: [
+        { name: "Espresso Beans", qty: 18 },
+        { name: "Whole Milk", qty: 200 },
+        { name: "Vanilla Syrup", qty: 20 },
+        { name: "Caramel Sauce", qty: 15 },
+      ],
+      sizes: [
+        { name: "Small", priceDeltaCents: -1500, deltas: [{ name: "Whole Milk", qtyDelta: -40 }] },
+        { name: "Medium", priceDeltaCents: 0, deltas: [] },
+        { name: "Large", priceDeltaCents: 2000, deltas: [{ name: "Whole Milk", qtyDelta: 80 }] },
+      ],
+      addOns: [
+        { name: "Extra Shot", priceCents: 3000, available: true, ingName: "Espresso Beans", qty: 18 },
+        { name: "Oat Milk", priceCents: 2500, available: true, ingName: "Oat Milk", qty: 200 },
+      ],
+    },
+    {
+      name: "Matcha Latte",
+      description: "Stone-ground matcha with steamed milk.",
+      basePriceCents: 15000,
+      category: "Non-Coffee",
+      available: true,
+      noIngredients: false,
+      ingredients: [
+        { name: "Matcha Powder", qty: 10 },
+        { name: "Whole Milk", qty: 200 },
+      ],
+      sizes: [
+        { name: "Small", priceDeltaCents: -1500, deltas: [{ name: "Whole Milk", qtyDelta: -40 }] },
+        { name: "Medium", priceDeltaCents: 0, deltas: [] },
+        { name: "Large", priceDeltaCents: 2000, deltas: [{ name: "Whole Milk", qtyDelta: 80 }] },
+      ],
+      addOns: [
+        { name: "Oat Milk", priceCents: 2500, available: true, ingName: "Oat Milk", qty: 200 },
+      ],
+    },
+    {
+      name: "Butter Croissant",
+      description: "Flaky, all-butter croissant baked fresh daily.",
+      basePriceCents: 8500,
+      category: "Pastries",
+      available: true,
+      noIngredients: false,
+      ingredients: [{ name: "Fresh Croissants", qty: 1 }],
+      sizes: [],
+      addOns: [],
+    },
+    {
+      name: "Blueberry Muffin",
+      description: "Loaded with wild blueberries.",
+      basePriceCents: 9500,
+      category: "Pastries",
+      available: true,
+      noIngredients: false,
+      ingredients: [{ name: "Fresh Muffins", qty: 1 }],
+      sizes: [],
+      addOns: [],
+    },
+  ];
+
+  for (const item of menuItems) {
+    const existing = await prisma.menuItem.findFirst({ where: { name: item.name } });
+    if (!existing) {
+      await prisma.menuItem.create({
+        data: {
+          name: item.name,
+          description: item.description,
+          basePriceCents: item.basePriceCents,
+          category: item.category,
+          available: item.available,
+          noIngredients: item.noIngredients,
+          ingredients: {
+            create: item.ingredients.map((ing) => ({
+              ingredientId: ingredientMap.get(ing.name)!,
+              qty: ing.qty,
+            })),
+          },
+          sizes: {
+            create: item.sizes.map((s) => ({
+              name: s.name,
+              priceDeltaCents: s.priceDeltaCents,
+              ingredients: {
+                create: s.deltas.map((d) => ({
+                  ingredientId: ingredientMap.get(d.name)!,
+                  qtyDelta: d.qtyDelta,
+                })),
+              },
+            })),
+          },
+          addOns: {
+            create: item.addOns.map((a) => ({
+              name: a.name,
+              priceCents: a.priceCents,
+              available: a.available,
+              ingredients: a.ingName
+                ? {
+                    create: {
+                      ingredientId: ingredientMap.get(a.ingName)!,
+                      qty: a.qty,
+                    },
+                  }
+                : undefined,
+            })),
+          },
+        },
+      });
+    }
+  }
+
+  const ingCount = await prisma.ingredient.count();
+  const menuCount = await prisma.menuItem.count();
   const userCount = await prisma.user.count();
-  console.log(`Seed complete: ${count} menu items and ${userCount} users created.`);
+  console.log(`Seed completed: ${ingCount} ingredients, ${menuCount} menu items, and ${userCount} users.`);
 }
 
 main()

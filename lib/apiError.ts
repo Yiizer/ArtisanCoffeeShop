@@ -1,19 +1,17 @@
-// Shared helper to translate an OrderServiceError (or any thrown error) into a
-// JSON HTTP response for the route handlers.
+// Shared helper to translate service/auth errors into JSON HTTP responses for route handlers.
 
 import { NextResponse } from "next/server";
-import { OrderServiceError } from "./orders";
 
 export function toErrorResponse(err: unknown): NextResponse {
-  if (err instanceof OrderServiceError) {
+  if (err && typeof err === "object" && "statusCode" in err && typeof (err as any).statusCode === "number") {
+    const errorObj = err as { statusCode: number; message: string; detail?: unknown };
     return NextResponse.json(
-      { error: err.message, detail: err.detail ?? null },
-      { status: err.statusCode }
+      { error: errorObj.message, detail: errorObj.detail ?? null },
+      { status: errorObj.statusCode }
     );
   }
 
   if (err instanceof SyntaxError) {
-    // Thrown by request.json() on a malformed body.
     return NextResponse.json(
       { error: "Invalid JSON body." },
       { status: 400 }
@@ -21,7 +19,7 @@ export function toErrorResponse(err: unknown): NextResponse {
   }
 
   return NextResponse.json(
-    { error: "Internal server error." },
+    { error: err instanceof Error ? err.message : "Internal server error." },
     { status: 500 }
   );
 }

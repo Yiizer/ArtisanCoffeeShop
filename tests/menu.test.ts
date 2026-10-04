@@ -12,7 +12,18 @@ const mockPrisma = vi.hoisted(() => ({
   },
   menuItemAddOn: {
     update: vi.fn(),
+    deleteMany: vi.fn(),
   },
+  menuItemSize: {
+    deleteMany: vi.fn(),
+  },
+  menuItemIngredient: {
+    deleteMany: vi.fn(),
+  },
+  ingredient: {
+    findMany: vi.fn().mockResolvedValue([]),
+  },
+  $transaction: vi.fn(async (cb: any) => cb(mockPrisma)),
 }));
 
 vi.mock("../lib/db", () => ({

@@ -5,18 +5,20 @@
  * All interactive elements meet the 44×44px minimum touch target (WCAG 2.5.5).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { computeRunningTotalCents } from "@/lib/pricing";
 import type { ResolvedOrderItem } from "@/lib/types";
 import { formatPesos } from "@/lib/format";
+import StaffStockModal from "./StaffStockModal";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type MenuSize  = { id: string; name: string; priceDeltaCents: number };
-type MenuAddOn = { id: string; name: string; priceCents: number; available: boolean };
+type MenuSize  = { id: string; name: string; priceDeltaCents: number; inStock?: boolean };
+type MenuAddOn = { id: string; name: string; priceCents: number; available: boolean; inStock?: boolean };
 type MenuItem  = {
   id: string; name: string; description?: string | null;
   basePriceCents: number; category: string; available: boolean;
+  inStock?: boolean;
   sizes: MenuSize[]; addOns: MenuAddOn[];
 };
 type CartLine = {
@@ -24,6 +26,7 @@ type CartLine = {
   basePriceCents: number; sizeId: string | null; sizeName: string | null;
   sizeDeltaCents: number; addOns: { id: string; name: string; priceCents: number }[];
   quantity: number; notes: string;
+  inStock?: boolean;
 };
 type PM = "CASH" | "GCASH";
 
@@ -50,6 +53,7 @@ function pillCls(active: boolean) {
 export default function OrderEntry() {
   const [menu, setMenu]           = useState<MenuItem[] | null>(null);
   const [menuError, setMenuError] = useState<string | null>(null);
+  const [isStockModalOpen, setIsStockModalOpen] = useState(false);
 
   const ALL = "__all__";
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -71,17 +75,20 @@ export default function OrderEntry() {
   const [lastChange,   setLastChange]   = useState<number | null>(null);
 
   // Load menu
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/menu")
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`Menu failed (${r.status})`);
-        const d: MenuItem[] = await r.json();
-        if (!cancelled) setMenu(d);
-      })
-      .catch((e) => { if (!cancelled) setMenuError(e instanceof Error ? e.message : "Failed to load menu."); });
-    return () => { cancelled = true; };
+  const loadMenu = useCallback(async () => {
+    try {
+      const r = await fetch("/api/menu");
+      if (!r.ok) throw new Error(`Menu failed (${r.status})`);
+      const d: MenuItem[] = await r.json();
+      setMenu(d);
+    } catch (e) {
+      setMenuError(e instanceof Error ? e.message : "Failed to load menu.");
+    }
   }, []);
+
+  useEffect(() => {
+    loadMenu();
+  }, [loadMenu]);
 
   const availableMenu = useMemo(() => (menu ?? []).filter((i) => i.available), [menu]);
 
@@ -128,7 +135,8 @@ export default function OrderEntry() {
     const size   = item.sizes.find((s) => s.id === sizeId) ?? null;
     const addOnIds = selAddOns[item.id] ?? new Set<string>();
     const chosenAddOns = item.addOns.filter((a) => a.available && addOnIds.has(a.id)).map((a) => ({ id: a.id, name: a.name, priceCents: a.priceCents }));
-    setCart((p) => [...p, { key: nextKey(), menuItemId: item.id, name: item.name, basePriceCents: item.basePriceCents, sizeId: size?.id ?? null, sizeName: size?.name ?? null, sizeDeltaCents: size?.priceDeltaCents ?? 0, addOns: chosenAddOns, quantity: getQty(item.id), notes: (notes[item.id] ?? "").trim() }]);
+    const lineInStock = (item.inStock ?? true) && (size ? (size.inStock ?? true) : true);
+    setCart((p) => [...p, { key: nextKey(), menuItemId: item.id, name: item.name, basePriceCents: item.basePriceCents, sizeId: size?.id ?? null, sizeName: size?.name ?? null, sizeDeltaCents: size?.priceDeltaCents ?? 0, addOns: chosenAddOns, quantity: getQty(item.id), notes: (notes[item.id] ?? "").trim(), inStock: lineInStock }]);
     setSelAddOns((p) => ({ ...p, [item.id]: new Set() }));
     setQty((p) => ({ ...p, [item.id]: 1 }));
     setNotes((p) => ({ ...p, [item.id]: "" }));
@@ -169,9 +177,9 @@ export default function OrderEntry() {
       {/* ══ LEFT: Item Selection ════════════════════════════════════════════ */}
       <div className="space-y-4">
 
-        {/* Category Pills (Wrap on all screen sizes) */}
-        {categories.length > 0 && (
-          <div className="pb-1">
+        {/* Category Pills & Quick Stock Action */}
+        <div className="flex items-center justify-between gap-3 pb-1 flex-wrap">
+          {categories.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
               {[["__all__", "All"] as [string, string], ...categories.map(([c]) => [c, c] as [string, string])].map(([val, label]) => (
                 <button
@@ -184,8 +192,16 @@ export default function OrderEntry() {
                 </button>
               ))}
             </div>
-          </div>
-        )}
+          )}
+          <button
+            type="button"
+            onClick={() => setIsStockModalOpen(true)}
+            className="flex items-center gap-1.5 rounded-full border border-roast/20 bg-foam px-3.5 py-1.5 text-xs font-bold text-espresso shadow-xs hover:bg-cream active:scale-95 transition-all shrink-0 min-h-[38px]"
+          >
+            <span>📦</span>
+            <span>Stock Actions</span>
+          </button>
+        </div>
 
         {/* Item grid */}
         {categories.length === 0 ? (
@@ -194,6 +210,7 @@ export default function OrderEntry() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {categoryItems.map((item) => {
               const isOpen = configItemId === item.id;
+              const isOutOfStock = item.inStock === false;
               return (
                 <div key={item.id} className="contents">
 
@@ -206,10 +223,19 @@ export default function OrderEntry() {
                       "flex min-h-[96px] flex-col items-start rounded-2xl border p-4 text-left transition-all active:scale-95 " +
                       (isOpen
                         ? "border-espresso bg-espresso text-foam shadow-md"
+                        : isOutOfStock
+                        ? "border-roast/15 bg-cream/70 text-espresso/75"
                         : "border-roast/15 bg-foam text-espresso hover:border-roast/30 hover:shadow-xs")
                     }
                   >
-                    <span className="text-sm sm:text-base font-bold leading-snug">{item.name}</span>
+                    <div className="flex items-start justify-between w-full gap-1">
+                      <span className="text-sm sm:text-base font-bold leading-snug">{item.name}</span>
+                      {isOutOfStock && (
+                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-red-700 shrink-0">
+                          Out of Stock
+                        </span>
+                      )}
+                    </div>
                     {item.description && (
                       <span className={"mt-1 line-clamp-2 text-xs " + (isOpen ? "text-foam/70" : "text-roast/70")}>
                         {item.description}
@@ -248,6 +274,7 @@ export default function OrderEntry() {
                           <div className="flex flex-wrap gap-2">
                             {configItem.sizes.map((s) => {
                               const on = getSizeId(configItem) === s.id;
+                              const outOfStock = s.inStock === false;
                               return (
                                 <button
                                   key={s.id}
@@ -258,10 +285,15 @@ export default function OrderEntry() {
                                     "rounded-full border px-4 py-2 text-xs sm:text-sm font-semibold transition-all active:scale-95 min-h-[38px] " +
                                     (on
                                       ? "border-espresso bg-espresso text-foam shadow-xs"
+                                      : outOfStock
+                                      ? "border-roast/15 bg-cream text-roast/50 line-through"
                                       : "border-roast/20 bg-cream text-roast hover:bg-latte/20")
                                   }
                                 >
                                   {s.name}
+                                  {outOfStock && (
+                                    <span className="ml-1 text-[10px] font-normal no-underline opacity-75">(Out of stock)</span>
+                                  )}
                                   {s.priceDeltaCents !== 0 && (
                                     <span className={on ? " text-foam/80 font-mono" : " text-roast font-mono"}>
                                       {" "}{s.priceDeltaCents > 0 ? "+" : "−"}{formatPesos(Math.abs(s.priceDeltaCents))}
@@ -281,6 +313,7 @@ export default function OrderEntry() {
                           <div className="flex flex-wrap gap-2">
                             {configItem.addOns.filter((a) => a.available).map((a) => {
                               const on = (selAddOns[configItem.id] ?? new Set()).has(a.id);
+                              const outOfStock = a.inStock === false;
                               return (
                                 <button
                                   key={a.id}
@@ -291,10 +324,15 @@ export default function OrderEntry() {
                                     "rounded-full border px-3.5 py-2 text-xs font-semibold transition-all active:scale-95 min-h-[38px] " +
                                     (on
                                       ? "border-espresso bg-espresso text-foam shadow-xs"
+                                      : outOfStock
+                                      ? "border-roast/15 bg-cream text-roast/50 line-through"
                                       : "border-roast/20 bg-cream text-roast hover:bg-latte/20")
                                   }
                                 >
                                   {a.name}
+                                  {outOfStock && (
+                                    <span className="ml-1 text-[10px] font-normal no-underline opacity-75">(Low stock)</span>
+                                  )}
                                   <span className={on ? " text-foam/80 font-mono" : " text-roast font-mono"}>
                                     {" "}+{formatPesos(a.priceCents)}
                                   </span>
@@ -509,6 +547,13 @@ export default function OrderEntry() {
           </div>
         )}
 
+        {/* Soft Stock Warning */}
+        {cart.some((l) => l.inStock === false) && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+            ⚠️ Some items in the cart are marked low/out of stock in the system. You can still proceed if physical supplies are on hand.
+          </div>
+        )}
+
         {/* Submit */}
         <button
           type="button"
@@ -533,6 +578,13 @@ export default function OrderEntry() {
           </p>
         )}
       </aside>
+
+      {/* Staff Stock Drawer / Modal */}
+      <StaffStockModal
+        isOpen={isStockModalOpen}
+        onClose={() => setIsStockModalOpen(false)}
+        onMovementRecorded={loadMenu}
+      />
     </div>
   );
 }

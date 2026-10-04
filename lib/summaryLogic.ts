@@ -1,14 +1,20 @@
 // Pure summary aggregation and history range snapping.
 //
-// The aggregation here mirrors what the Summary Service computes in the
-// database (SUM / COUNT / GROUP BY DATE). Keeping a pure reference
-// implementation lets us property-test the revenue-exclusion and reconciliation
-// invariants without a database. Range snapping operates on Business_Day date
-// strings (YYYY-MM-DD); the 2 AM Asia/Manila boundary is already applied when
-// timestamps are mapped to business days by `lib/businessDay.ts`.
+// Extended for Inventory, Costing & Profit:
+// - costedRevenueCents, uncostedRevenueCents
+// - cogsCents
+// - grossProfitCents, marginPct
+// - wasteCents, adjustmentsCents, unvaluedMovementCount
+// - expensesCents, netProfitCents
 
 import { OrderStatus } from "./types";
 import type { OrderStatus as OrderStatusType, PaymentMethod } from "./types";
+import { toDec, roundToCentavos } from "./decimal";
+
+export type SummaryOrderItemRecord = {
+  lineTotalCents: number | null;
+  costCents: number | null;
+};
 
 export type SummaryOrderRecord = {
   businessDay: string; // YYYY-MM-DD
@@ -17,6 +23,21 @@ export type SummaryOrderRecord = {
   refunded: boolean;
   paymentMethod: PaymentMethod;
   totalPriceCents: number;
+  costCents?: number | null;
+  uncostedLines?: number;
+  items?: SummaryOrderItemRecord[];
+};
+
+export type SummaryMovementRecord = {
+  businessDay: string; // YYYY-MM-DD
+  reason: "WASTE" | "ADJUSTMENT" | "OPENING" | "RESTOCK" | "SALE" | "RETURN";
+  qtyChange: string | number | { toString(): string };
+  unitCostCents: string | number | { toString(): string } | null;
+};
+
+export type SummaryExpenseRecord = {
+  businessDay: string;
+  amountCents: number;
 };
 
 export type DailyBreakdown = {
@@ -32,6 +53,16 @@ export type SummaryAggregate = {
   refundedCents: number;
   cashCents: number;
   gcashCents: number;
+  costedRevenueCents: number;
+  uncostedRevenueCents: number;
+  cogsCents: number;
+  grossProfitCents: number;
+  marginPct: number | null; // null if costedRevenueCents === 0
+  wasteCents: number;
+  adjustmentsCents: number;
+  unvaluedMovementCount: number;
+  expensesCents: number;
+  netProfitCents: number;
   dailyBreakdown: DailyBreakdown[];
 };
 
@@ -47,13 +78,12 @@ export function contributesToRevenue(order: SummaryOrderRecord): boolean {
 }
 
 /**
- * Aggregate a set of order records into a summary. `revenueCents` excludes
- * refunded and cancelled-unpaid orders; `refundedCents` sums refunded orders
- * (disjoint from revenue). Counts include every order. The per-day breakdown is
- * sorted ascending by date and reconciles with the top-level totals.
+ * Aggregate order records, stock movements, and expenses into a summary.
  */
 export function aggregateSummary(
-  orders: SummaryOrderRecord[]
+  orders: SummaryOrderRecord[],
+  movements: SummaryMovementRecord[] = [],
+  expenses: SummaryExpenseRecord[] = []
 ): SummaryAggregate {
   let totalOrders = 0;
   let cancelledOrders = 0;
@@ -61,17 +91,43 @@ export function aggregateSummary(
   let refundedCents = 0;
   let cashCents = 0;
   let gcashCents = 0;
+  let costedRevenueCents = 0;
+  let cogsCents = 0;
 
-  const perDay = new Map<string, { orders: number; revenueCents: number }>();
+  type DayAccumulator = {
+    orders: number;
+    revenueCents: number;
+    costedRevenueCents: number;
+    cogsCents: number;
+    wasteCents: number;
+    adjustmentsCents: number;
+    expensesCents: number;
+  };
+
+  const perDay = new Map<string, DayAccumulator>();
+
+  const getDay = (date: string): DayAccumulator => {
+    let day = perDay.get(date);
+    if (!day) {
+      day = {
+        orders: 0,
+        revenueCents: 0,
+        costedRevenueCents: 0,
+        cogsCents: 0,
+        wasteCents: 0,
+        adjustmentsCents: 0,
+        expensesCents: 0,
+      };
+      perDay.set(date, day);
+    }
+    return day;
+  };
 
   for (const order of orders) {
     totalOrders += 1;
     if (order.status === OrderStatus.CANCELLED) cancelledOrders += 1;
 
-    const day = perDay.get(order.businessDay) ?? {
-      orders: 0,
-      revenueCents: 0,
-    };
+    const day = getDay(order.businessDay);
     day.orders += 1;
 
     if (order.refunded) {
@@ -86,13 +142,79 @@ export function aggregateSummary(
       } else {
         gcashCents += order.totalPriceCents;
       }
-    }
 
-    perDay.set(order.businessDay, day);
+      // Costing calculations
+      if (order.items && order.items.length > 0) {
+        for (const item of order.items) {
+          if (item.costCents !== null && item.costCents !== undefined) {
+            const lineRev = item.lineTotalCents ?? 0;
+            costedRevenueCents += lineRev;
+            cogsCents += item.costCents;
+            day.costedRevenueCents += lineRev;
+            day.cogsCents += item.costCents;
+          }
+        }
+      } else if (order.costCents !== null && order.costCents !== undefined) {
+        // Fallback for orders without item-level snapshots
+        costedRevenueCents += order.totalPriceCents;
+        cogsCents += order.costCents;
+        day.costedRevenueCents += order.totalPriceCents;
+        day.cogsCents += order.costCents;
+      }
+    }
   }
 
+  // Movements (Waste & Adjustments)
+  let wasteCents = 0;
+  let adjustmentsCents = 0;
+  let unvaluedMovementCount = 0;
+
+  for (const mov of movements) {
+    const day = getDay(mov.businessDay);
+    if (mov.reason === "WASTE") {
+      if (mov.unitCostCents !== null && mov.unitCostCents !== undefined) {
+        const qty = toDec(mov.qtyChange);
+        const cost = toDec(mov.unitCostCents);
+        // qtyChange for waste is negative, so - (qty * unitCost) is positive
+        const loss = roundToCentavos(qty.times(cost).negated());
+        wasteCents += loss;
+        day.wasteCents += loss;
+      } else {
+        unvaluedMovementCount++;
+      }
+    } else if (mov.reason === "ADJUSTMENT") {
+      if (mov.unitCostCents !== null && mov.unitCostCents !== undefined) {
+        const qty = toDec(mov.qtyChange);
+        const cost = toDec(mov.unitCostCents);
+        // Net: shrinkage (negative qty) gives positive loss; gain (positive qty) offsets loss
+        const loss = roundToCentavos(qty.times(cost).negated());
+        adjustmentsCents += loss;
+        day.adjustmentsCents += loss;
+      } else {
+        unvaluedMovementCount++;
+      }
+    }
+  }
+
+  // Expenses
+  let expensesCents = 0;
+  for (const exp of expenses) {
+    const day = getDay(exp.businessDay);
+    expensesCents += exp.amountCents;
+    day.expensesCents += exp.amountCents;
+  }
+
+  const uncostedRevenueCents = revenueCents - costedRevenueCents;
+  const grossProfitCents = costedRevenueCents - cogsCents;
+  const marginPct = costedRevenueCents > 0 ? grossProfitCents / costedRevenueCents : null;
+  const netProfitCents = grossProfitCents - wasteCents - adjustmentsCents - expensesCents;
+
   const dailyBreakdown: DailyBreakdown[] = Array.from(perDay.entries())
-    .map(([date, v]) => ({ date, orders: v.orders, revenueCents: v.revenueCents }))
+    .map(([date, v]) => ({
+      date,
+      orders: v.orders,
+      revenueCents: v.revenueCents,
+    }))
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   return {
@@ -102,6 +224,16 @@ export function aggregateSummary(
     refundedCents,
     cashCents,
     gcashCents,
+    costedRevenueCents,
+    uncostedRevenueCents,
+    cogsCents,
+    grossProfitCents,
+    marginPct,
+    wasteCents,
+    adjustmentsCents,
+    unvaluedMovementCount,
+    expensesCents,
+    netProfitCents,
     dailyBreakdown,
   };
 }
