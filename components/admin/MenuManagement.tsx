@@ -41,6 +41,7 @@ function draftFromItem(item: AdminMenuItem): ItemDraft {
       qty: i.qty,
     })),
     sizes: item.sizes.map((s) => ({
+      id: s.id,
       name: s.name,
       priceDeltaPesos: centsToPesosInput(s.priceDeltaCents),
       ingredients: (s.ingredients ?? []).map((si) => ({
@@ -49,6 +50,7 @@ function draftFromItem(item: AdminMenuItem): ItemDraft {
       })),
     })),
     addOns: item.addOns.map((a) => ({
+      id: a.id,
       name: a.name,
       pricePesos: centsToPesosInput(a.priceCents),
       available: a.available,
@@ -78,6 +80,7 @@ function draftToPayload(d: ItemDraft) {
             qty: i.qty,
           })),
     sizes: d.sizes.map((s) => ({
+      id: s.id,
       name: s.name.trim(),
       priceDeltaCents: pesosToCents(s.priceDeltaPesos),
       ingredients: (s.ingredients ?? [])
@@ -88,6 +91,7 @@ function draftToPayload(d: ItemDraft) {
         })),
     })),
     addOns: d.addOns.map((a) => ({
+      id: a.id,
       name: a.name.trim(),
       priceCents: pesosToCents(a.pricePesos),
       available: a.available,

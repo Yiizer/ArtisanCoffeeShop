@@ -11,12 +11,14 @@ export type SizeRecipeIngredientDraft = {
 };
 
 export type SizeDraft = {
+  id?: string;
   name: string;
   priceDeltaPesos: string;
   ingredients?: SizeRecipeIngredientDraft[];
 };
 
 export type AddOnDraft = {
+  id?: string;
   name: string;
   pricePesos: string;
   available: boolean;

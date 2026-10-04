@@ -404,43 +404,130 @@ export async function updateMenuItem(id: string, input: Partial<MenuItemInput>) 
       };
     }
 
+    await tx.menuItem.update({
+      where: { id },
+      data,
+    });
+
     if (input.sizes !== undefined) {
-      data.sizes = {
-        deleteMany: {},
-        create: input.sizes.map((s) => ({
-          name: s.name.trim(),
-          priceDeltaCents: s.priceDeltaCents,
-          ingredients: {
-            create: (s.ingredients ?? []).map((si) => ({
-              ingredientId: si.ingredientId,
-              qtyDelta: toPrismaDec(toDec(si.qtyDelta)),
-            })),
-          },
-        })),
-      };
+      const existingSizes = await tx.menuItemSize.findMany({
+        where: { menuItemId: id },
+      });
+      const inputSizeIds = new Set(input.sizes.map((s) => s.id).filter(Boolean));
+
+      // Remove deleted sizes only if not referenced by past orders
+      for (const existing of existingSizes) {
+        if (!inputSizeIds.has(existing.id)) {
+          const orderCount = await tx.orderItem.count({ where: { sizeId: existing.id } });
+          if (orderCount === 0) {
+            await tx.menuItemSize.delete({ where: { id: existing.id } });
+          }
+        }
+      }
+
+      for (const s of input.sizes) {
+        const match = s.id
+          ? existingSizes.find((es) => es.id === s.id)
+          : existingSizes.find((es) => es.name.trim().toLowerCase() === s.name.trim().toLowerCase());
+
+        if (match) {
+          await tx.menuItemSize.update({
+            where: { id: match.id },
+            data: {
+              name: s.name.trim(),
+              priceDeltaCents: s.priceDeltaCents,
+              ingredients: {
+                deleteMany: {},
+                create: (s.ingredients ?? []).map((si) => ({
+                  ingredientId: si.ingredientId,
+                  qtyDelta: toPrismaDec(toDec(si.qtyDelta)),
+                })),
+              },
+            },
+          });
+        } else {
+          await tx.menuItemSize.create({
+            data: {
+              menuItemId: id,
+              name: s.name.trim(),
+              priceDeltaCents: s.priceDeltaCents,
+              ingredients: {
+                create: (s.ingredients ?? []).map((si) => ({
+                  ingredientId: si.ingredientId,
+                  qtyDelta: toPrismaDec(toDec(si.qtyDelta)),
+                })),
+              },
+            },
+          });
+        }
+      }
     }
 
     if (input.addOns !== undefined) {
-      data.addOns = {
-        deleteMany: {},
-        create: input.addOns.map((a) => ({
-          name: a.name.trim(),
-          priceCents: a.priceCents,
-          available: a.available ?? true,
-          noIngredients: a.noIngredients ?? false,
-          ingredients: {
-            create: (a.ingredients ?? []).map((ai) => ({
-              ingredientId: ai.ingredientId,
-              qty: toPrismaDec(toDec(ai.qty)),
-            })),
-          },
-        })),
-      };
+      const existingAddOns = await tx.menuItemAddOn.findMany({
+        where: { menuItemId: id },
+      });
+      const inputAddOnIds = new Set(input.addOns.map((a) => a.id).filter(Boolean));
+
+      // Remove or deactivate deleted add-ons
+      for (const existing of existingAddOns) {
+        if (!inputAddOnIds.has(existing.id)) {
+          const orderCount = await tx.orderItemAddOn.count({ where: { addOnId: existing.id } });
+          if (orderCount === 0) {
+            await tx.menuItemAddOn.delete({ where: { id: existing.id } });
+          } else {
+            await tx.menuItemAddOn.update({
+              where: { id: existing.id },
+              data: { available: false },
+            });
+          }
+        }
+      }
+
+      for (const a of input.addOns) {
+        const match = a.id
+          ? existingAddOns.find((ea) => ea.id === a.id)
+          : existingAddOns.find((ea) => ea.name.trim().toLowerCase() === a.name.trim().toLowerCase());
+
+        if (match) {
+          await tx.menuItemAddOn.update({
+            where: { id: match.id },
+            data: {
+              name: a.name.trim(),
+              priceCents: a.priceCents,
+              available: a.available ?? true,
+              noIngredients: a.noIngredients ?? false,
+              ingredients: {
+                deleteMany: {},
+                create: (a.ingredients ?? []).map((ai) => ({
+                  ingredientId: ai.ingredientId,
+                  qty: toPrismaDec(toDec(ai.qty)),
+                })),
+              },
+            },
+          });
+        } else {
+          await tx.menuItemAddOn.create({
+            data: {
+              menuItemId: id,
+              name: a.name.trim(),
+              priceCents: a.priceCents,
+              available: a.available ?? true,
+              noIngredients: a.noIngredients ?? false,
+              ingredients: {
+                create: (a.ingredients ?? []).map((ai) => ({
+                  ingredientId: ai.ingredientId,
+                  qty: toPrismaDec(toDec(ai.qty)),
+                })),
+              },
+            },
+          });
+        }
+      }
     }
 
-    return tx.menuItem.update({
+    return tx.menuItem.findUniqueOrThrow({
       where: { id },
-      data,
       include: menuInclude,
     });
   });

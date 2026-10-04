@@ -80,7 +80,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (error instanceof MenuValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-    throw error;
+    console.error("PATCH /api/menu/[id] error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to update menu item." },
+      { status: 500 }
+    );
   }
 }
 

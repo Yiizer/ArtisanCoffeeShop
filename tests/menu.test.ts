@@ -6,19 +6,33 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockPrisma = vi.hoisted(() => ({
   menuItem: {
     findMany: vi.fn(),
+    findUniqueOrThrow: vi.fn().mockResolvedValue({ id: "item-1" }),
     create: vi.fn(),
-    update: vi.fn(),
+    update: vi.fn().mockResolvedValue({ id: "item-1" }),
     delete: vi.fn(),
   },
   menuItemAddOn: {
-    update: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
+    create: vi.fn().mockResolvedValue({ id: "addon-1" }),
+    update: vi.fn().mockResolvedValue({ id: "addon-1" }),
+    delete: vi.fn(),
     deleteMany: vi.fn(),
   },
   menuItemSize: {
+    findMany: vi.fn().mockResolvedValue([]),
+    create: vi.fn().mockResolvedValue({ id: "size-1" }),
+    update: vi.fn().mockResolvedValue({ id: "size-1" }),
+    delete: vi.fn(),
     deleteMany: vi.fn(),
   },
   menuItemIngredient: {
     deleteMany: vi.fn(),
+  },
+  orderItem: {
+    count: vi.fn().mockResolvedValue(0),
+  },
+  orderItemAddOn: {
+    count: vi.fn().mockResolvedValue(0),
   },
   ingredient: {
     findMany: vi.fn().mockResolvedValue([]),
@@ -141,19 +155,18 @@ describe("updateMenuItem validation (Requirements 2.3, 2.7, 2.8)", () => {
     expect(arg.data).not.toHaveProperty("basePriceCents");
   });
 
-  it("replaces sizes and add-ons via delete-then-create when provided", async () => {
+  it("reconciles sizes and add-ons when provided without destructive parent deletes", async () => {
     mockPrisma.menuItem.update.mockResolvedValue({ id: "item-1" });
+    mockPrisma.menuItemSize.findMany.mockResolvedValue([]);
+    mockPrisma.menuItemAddOn.findMany.mockResolvedValue([]);
 
     await updateMenuItem("item-1", {
       sizes: [{ name: "Large", priceDeltaCents: 3000 }],
       addOns: [{ name: "Syrup", priceCents: 1500 }],
     });
 
-    const arg = mockPrisma.menuItem.update.mock.calls[0][0];
-    expect(arg.data.sizes.deleteMany).toEqual({});
-    expect(arg.data.sizes.create).toHaveLength(1);
-    expect(arg.data.addOns.deleteMany).toEqual({});
-    expect(arg.data.addOns.create[0].available).toBe(true); // defaulted
+    expect(mockPrisma.menuItemSize.create).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.menuItemAddOn.create).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an invalid partial update without touching the database", async () => {

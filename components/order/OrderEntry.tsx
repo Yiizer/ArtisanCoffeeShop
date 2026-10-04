@@ -5,7 +5,7 @@
  * All interactive elements meet the 44×44px minimum touch target (WCAG 2.5.5).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { computeRunningTotalCents } from "@/lib/pricing";
 import type { ResolvedOrderItem } from "@/lib/types";
 import { formatPesos } from "@/lib/format";
@@ -74,6 +74,11 @@ export default function OrderEntry() {
   const [cashReceived, setCashReceived] = useState("");
   const [lastChange,   setLastChange]   = useState<number | null>(null);
 
+  // Mobile floating cart & drawer state
+  const [cartOpen, setCartOpen]         = useState(false);
+  const [badgeBump, setBadgeBump]       = useState(false);
+  const badgeTimeoutRef                 = useRef<NodeJS.Timeout | null>(null);
+
   // Load menu
   const loadMenu = useCallback(async () => {
     try {
@@ -89,6 +94,35 @@ export default function OrderEntry() {
   useEffect(() => {
     loadMenu();
   }, [loadMenu]);
+
+  // Clean up badge bump animation timer
+  useEffect(() => {
+    return () => {
+      if (badgeTimeoutRef.current) clearTimeout(badgeTimeoutRef.current);
+    };
+  }, []);
+
+  // Lock body scroll & handle Escape / viewport resize when mobile cart is open
+  useEffect(() => {
+    if (!cartOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCartOpen(false);
+    };
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) setCartOpen(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", handleResize);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [cartOpen]);
 
   const availableMenu = useMemo(() => (menu ?? []).filter((i) => i.available), [menu]);
 
@@ -117,6 +151,7 @@ export default function OrderEntry() {
     [cart],
   );
   const runningTotal = computeRunningTotalCents(resolvedCart);
+  const cartItemCount = useMemo(() => cart.reduce((n, l) => n + l.quantity, 0), [cart]);
 
   function getSizeId(item: MenuItem) { return selSize[item.id] ?? item.sizes[0]?.id ?? null; }
   function getQty(id: string) { return qty[id] ?? 1; }
@@ -142,6 +177,11 @@ export default function OrderEntry() {
     setNotes((p) => ({ ...p, [item.id]: "" }));
     setConfigItemId(null);
     setLastNum(null); setSubmitError(null);
+
+    // Bump cart badge with micro-animation
+    setBadgeBump(true);
+    if (badgeTimeoutRef.current) clearTimeout(badgeTimeoutRef.current);
+    badgeTimeoutRef.current = setTimeout(() => setBadgeBump(false), 300);
   }
 
   // Parse cash received as centavos for comparison with runningTotal
@@ -171,11 +211,181 @@ export default function OrderEntry() {
   if (menuError) return <p className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{menuError}</p>;
   if (!menu)     return <p className="animate-pulse text-base text-roast">Loading menu…</p>;
 
+  const checkoutPanel = (
+    <>
+      {/* Customer name */}
+      <div>
+        <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-roast">
+          Customer Name (Optional)
+        </label>
+        <input
+          type="text"
+          value={customerName}
+          onChange={(e) => setCustomerName(e.target.value)}
+          placeholder="e.g. Maria"
+          className="w-full rounded-xl border border-roast/20 bg-cream px-3.5 py-2.5 text-base sm:text-sm text-espresso placeholder:text-roast/40 focus:border-espresso focus:outline-none min-h-[44px]"
+        />
+      </div>
+
+      {/* Line items */}
+      {cart.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-roast/20 py-8 text-center text-xs font-semibold text-roast/60">
+          Tap an item above to add to order
+        </p>
+      ) : (
+        <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
+          {cart.map((line) => {
+            const lineTotal = computeRunningTotalCents([{ basePriceCents: line.basePriceCents, sizeDeltaCents: line.sizeDeltaCents, addOnPricesCents: line.addOns.map((a) => a.priceCents), quantity: line.quantity }]);
+            return (
+              <li key={line.key} className="rounded-xl border border-roast/10 bg-cream/70 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-espresso leading-snug">
+                      {line.quantity}× {line.name}
+                      {line.sizeName && <span className="font-normal text-roast"> ({line.sizeName})</span>}
+                    </p>
+                    {line.addOns.length > 0 && (
+                      <p className="mt-0.5 text-xs text-roast">+ {line.addOns.map((a) => a.name).join(", ")}</p>
+                    )}
+                    {line.notes && (
+                      <p className="mt-0.5 text-xs italic text-roast/70">"{line.notes}"</p>
+                    )}
+                  </div>
+                  <span className="shrink-0 font-mono text-sm font-bold text-espresso">{formatPesos(lineTotal)}</span>
+                </div>
+                {/* Remove button */}
+                <button
+                  type="button"
+                  onClick={() => setCart((p) => p.filter((l) => l.key !== line.key))}
+                  className="mt-2 flex min-h-[36px] w-full items-center justify-center rounded-lg border border-red-200 bg-red-50 text-xs font-bold text-red-700 hover:bg-red-100 active:scale-95 transition-all"
+                >
+                  Remove
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* Total */}
+      <div className="flex items-baseline justify-between border-t border-roast/10 pt-3">
+        <span className="text-sm font-bold text-roast">Total Due</span>
+        <span className="font-mono text-2xl font-black text-espresso" data-testid="running-total">
+          {formatPesos(runningTotal)}
+        </span>
+      </div>
+
+      {/* Payment toggle */}
+      <div>
+        <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-roast">Payment Method</span>
+        <div className="flex gap-2 rounded-full border border-roast/15 bg-cream p-1">
+          {(["CASH", "GCASH"] as PM[]).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPm(p)}
+              aria-pressed={pm === p}
+              className={
+                "flex flex-1 min-h-[40px] items-center justify-center rounded-full text-xs font-bold transition-all active:scale-95 " +
+                (pm === p ? "bg-espresso text-foam shadow-xs" : "text-roast hover:bg-latte/20")
+              }
+            >
+              {p === "CASH" ? "💵 Cash" : "📱 GCash"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* GCash ref */}
+      {pm === "GCASH" && (
+        <div>
+          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-roast">Reference No. (Optional)</label>
+          <input
+            type="text"
+            value={gcashRef}
+            onChange={(e) => setGcashRef(e.target.value)}
+            placeholder="e.g. 123456"
+            className="w-full rounded-xl border border-roast/20 bg-cream px-3.5 py-2.5 text-base sm:text-sm text-espresso placeholder:text-roast/40 focus:border-espresso focus:outline-none min-h-[44px]"
+          />
+        </div>
+      )}
+
+      {/* Cash Received & Change Calculator */}
+      {pm === "CASH" && (
+        <div>
+          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-roast">Cash Received</label>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-bold text-roast/50">₱</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              value={cashReceived}
+              onChange={(e) => { setCashReceived(e.target.value); setLastNum(null); setLastChange(null); }}
+              placeholder="0.00"
+              className="w-full rounded-xl border border-roast/20 bg-cream pl-8 pr-3.5 py-2.5 text-base sm:text-sm text-espresso placeholder:text-roast/40 focus:border-espresso focus:outline-none min-h-[44px] font-mono"
+            />
+          </div>
+          {cashReceived !== "" && (
+            <div className="mt-2">
+              {cashIsValid ? (
+                <p className="flex items-baseline justify-between rounded-xl bg-green-50 px-3.5 py-2.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-green-700">Change</span>
+                  <span className="font-mono text-xl font-black text-green-700">{formatPesos(changeCents)}</span>
+                </p>
+              ) : cashIsInsufficient ? (
+                <p className="rounded-xl bg-red-50 px-3.5 py-2.5 text-xs font-bold text-red-700">
+                  ⚠ Insufficient — need {formatPesos(runningTotal - (cashReceivedCents ?? 0))} more
+                </p>
+              ) : (
+                <p className="rounded-xl bg-red-50 px-3.5 py-2.5 text-xs font-bold text-red-700">
+                  ⚠ Enter a valid amount
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Soft Stock Warning */}
+      {cart.some((l) => l.inStock === false) && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+          ⚠️ Some items in the cart are marked low/out of stock in the system. You can still proceed if physical supplies are on hand.
+        </div>
+      )}
+
+      {/* Submit */}
+      <button
+        type="button"
+        onClick={submitOrder}
+        disabled={!cart.length || submitting || cashBlocked}
+        className="flex min-h-[48px] w-full items-center justify-center rounded-full bg-espresso text-sm font-bold text-foam shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-40"
+      >
+        {submitting ? "Placing order…" : `Confirm Payment (${pm === "CASH" ? "Cash" : "GCash"})`}
+      </button>
+
+      {submitError && (
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-xs font-bold text-red-700">{submitError}</p>
+      )}
+      {lastNum !== null && (
+        <p className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-800" role="status">
+          ✓ Order #{lastNum} placed successfully!
+          {lastChange !== null && lastChange >= 0 && (
+            <span className="block mt-1 font-mono text-lg text-green-700">
+              Change: {formatPesos(lastChange)}
+            </span>
+          )}
+        </p>
+      )}
+    </>
+  );
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_24rem]">
 
       {/* ══ LEFT: Item Selection ════════════════════════════════════════════ */}
-      <div className="space-y-4">
+      <div className="space-y-4 pb-24 lg:pb-0">
 
         {/* Category Pills & Quick Stock Action */}
         <div className="flex items-center justify-between gap-3 pb-1 flex-wrap">
@@ -407,177 +617,105 @@ export default function OrderEntry() {
         )}
       </div>
 
-      {/* ══ RIGHT: Cart & Checkout ══════════════════════════════════════════ */}
-      <aside className="h-fit space-y-4 rounded-2xl border border-roast/15 bg-foam p-4 sm:p-5 shadow-xs lg:sticky lg:top-6">
-
+      {/* ══ RIGHT: Cart & Checkout (Desktop) ════════════════════════════════ */}
+      <aside className="hidden lg:block h-fit space-y-4 rounded-2xl border border-roast/15 bg-foam p-4 sm:p-5 shadow-xs lg:sticky lg:top-6">
         <h3 className="text-xs font-bold uppercase tracking-widest text-roast">Current Order</h3>
+        {checkoutPanel}
+      </aside>
 
-        {/* Customer name */}
-        <div>
-          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-roast">
-            Customer Name (Optional)
-          </label>
-          <input
-            type="text"
-            value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
-            placeholder="e.g. Maria"
-            className="w-full rounded-xl border border-roast/20 bg-cream px-3.5 py-2.5 text-base sm:text-sm text-espresso placeholder:text-roast/40 focus:border-espresso focus:outline-none min-h-[44px]"
-          />
-        </div>
-
-        {/* Line items */}
-        {cart.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-roast/20 py-8 text-center text-xs font-semibold text-roast/60">
-            Tap an item above to add to order
-          </p>
-        ) : (
-          <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
-            {cart.map((line) => {
-              const lineTotal = computeRunningTotalCents([{ basePriceCents: line.basePriceCents, sizeDeltaCents: line.sizeDeltaCents, addOnPricesCents: line.addOns.map((a) => a.priceCents), quantity: line.quantity }]);
-              return (
-                <li key={line.key} className="rounded-xl border border-roast/10 bg-cream/70 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                      <p className="text-sm font-bold text-espresso leading-snug">
-                        {line.quantity}× {line.name}
-                        {line.sizeName && <span className="font-normal text-roast"> ({line.sizeName})</span>}
-                      </p>
-                      {line.addOns.length > 0 && (
-                        <p className="mt-0.5 text-xs text-roast">+ {line.addOns.map((a) => a.name).join(", ")}</p>
-                      )}
-                      {line.notes && (
-                        <p className="mt-0.5 text-xs italic text-roast/70">"{line.notes}"</p>
-                      )}
-                    </div>
-                    <span className="shrink-0 font-mono text-sm font-bold text-espresso">{formatPesos(lineTotal)}</span>
-                  </div>
-                  {/* Remove button */}
-                  <button
-                    type="button"
-                    onClick={() => setCart((p) => p.filter((l) => l.key !== line.key))}
-                    className="mt-2 flex min-h-[36px] w-full items-center justify-center rounded-lg border border-red-200 bg-red-50 text-xs font-bold text-red-700 hover:bg-red-100 active:scale-95 transition-all"
-                  >
-                    Remove
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        {/* Total */}
-        <div className="flex items-baseline justify-between border-t border-roast/10 pt-3">
-          <span className="text-sm font-bold text-roast">Total Due</span>
-          <span className="font-mono text-2xl font-black text-espresso" data-testid="running-total">
-            {formatPesos(runningTotal)}
-          </span>
-        </div>
-
-        {/* Payment toggle */}
-        <div>
-          <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-roast">Payment Method</span>
-          <div className="flex gap-2 rounded-full border border-roast/15 bg-cream p-1">
-            {(["CASH", "GCASH"] as PM[]).map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPm(p)}
-                aria-pressed={pm === p}
-                className={
-                  "flex flex-1 min-h-[40px] items-center justify-center rounded-full text-xs font-bold transition-all active:scale-95 " +
-                  (pm === p ? "bg-espresso text-foam shadow-xs" : "text-roast hover:bg-latte/20")
-                }
-              >
-                {p === "CASH" ? "💵 Cash" : "📱 GCash"}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* GCash ref */}
-        {pm === "GCASH" && (
-          <div>
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-roast">Reference No. (Optional)</label>
-            <input
-              type="text"
-              value={gcashRef}
-              onChange={(e) => setGcashRef(e.target.value)}
-              placeholder="e.g. 123456"
-              className="w-full rounded-xl border border-roast/20 bg-cream px-3.5 py-2.5 text-base sm:text-sm text-espresso placeholder:text-roast/40 focus:border-espresso focus:outline-none min-h-[44px]"
-            />
-          </div>
-        )}
-
-        {/* Cash Received & Change Calculator */}
-        {pm === "CASH" && (
-          <div>
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-roast">Cash Received</label>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-bold text-roast/50">₱</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.01"
-                value={cashReceived}
-                onChange={(e) => { setCashReceived(e.target.value); setLastNum(null); setLastChange(null); }}
-                placeholder="0.00"
-                className="w-full rounded-xl border border-roast/20 bg-cream pl-8 pr-3.5 py-2.5 text-base sm:text-sm text-espresso placeholder:text-roast/40 focus:border-espresso focus:outline-none min-h-[44px] font-mono"
-              />
-            </div>
-            {cashReceived !== "" && (
-              <div className="mt-2">
-                {cashIsValid ? (
-                  <p className="flex items-baseline justify-between rounded-xl bg-green-50 px-3.5 py-2.5">
-                    <span className="text-xs font-bold uppercase tracking-wider text-green-700">Change</span>
-                    <span className="font-mono text-xl font-black text-green-700">{formatPesos(changeCents)}</span>
-                  </p>
-                ) : cashIsInsufficient ? (
-                  <p className="rounded-xl bg-red-50 px-3.5 py-2.5 text-xs font-bold text-red-700">
-                    ⚠ Insufficient — need {formatPesos(runningTotal - (cashReceivedCents ?? 0))} more
-                  </p>
-                ) : (
-                  <p className="rounded-xl bg-red-50 px-3.5 py-2.5 text-xs font-bold text-red-700">
-                    ⚠ Enter a valid amount
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Soft Stock Warning */}
-        {cart.some((l) => l.inStock === false) && (
-          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
-            ⚠️ Some items in the cart are marked low/out of stock in the system. You can still proceed if physical supplies are on hand.
-          </div>
-        )}
-
-        {/* Submit */}
+      {/* ══ MOBILE: Floating Cart Bar (below lg) ════════════════════════════ */}
+      <div
+        className="fixed bottom-4 inset-x-4 z-40 lg:hidden pointer-events-none flex justify-center"
+        style={{ bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
+      >
         <button
           type="button"
-          onClick={submitOrder}
-          disabled={!cart.length || submitting || cashBlocked}
-          className="flex min-h-[48px] w-full items-center justify-center rounded-full bg-espresso text-sm font-bold text-foam shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-40"
+          onClick={() => setCartOpen(true)}
+          aria-label={cartItemCount > 0 ? `View order (${cartItemCount} items, total ${formatPesos(runningTotal)})` : "View order (cart empty)"}
+          className={`pointer-events-auto flex items-center justify-between shadow-2xl transition-all active:scale-95 ${
+            cartItemCount > 0
+              ? "w-full max-w-md rounded-full bg-espresso px-5 py-3.5 text-foam hover:bg-espresso/95"
+              : "w-auto min-w-[210px] rounded-full border border-roast/20 bg-espresso/90 px-4 py-2.5 text-foam/80 backdrop-blur-sm hover:bg-espresso/95"
+          }`}
         >
-          {submitting ? "Placing order…" : `Confirm Payment (${pm === "CASH" ? "Cash" : "GCash"})`}
-        </button>
+          <div className="flex items-center gap-2.5">
+            <div className="relative flex items-center justify-center">
+              <span className={cartItemCount > 0 ? "text-lg" : "text-base"}>🛒</span>
+              {cartItemCount > 0 && (
+                <span
+                  className={`absolute -top-1.5 -right-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-foam px-1 text-[11px] font-black text-espresso shadow-xs transition-transform duration-200 ${
+                    badgeBump ? "scale-125 bg-amber-200" : "scale-100"
+                  }`}
+                >
+                  {cartItemCount}
+                </span>
+              )}
+            </div>
+            <span className={`font-bold tracking-wide ${cartItemCount > 0 ? "text-sm text-foam" : "text-xs text-foam/90"}`}>
+              {cartItemCount > 0 ? "View Order" : "Cart empty"}
+            </span>
+          </div>
 
-        {submitError && (
-          <p className="rounded-xl bg-red-50 px-4 py-3 text-xs font-bold text-red-700">{submitError}</p>
-        )}
-        {lastNum !== null && (
-          <p className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-800" role="status">
-            ✓ Order #{lastNum} placed successfully!
-            {lastChange !== null && lastChange >= 0 && (
-              <span className="block mt-1 font-mono text-lg text-green-700">
-                Change: {formatPesos(lastChange)}
-              </span>
-            )}
-          </p>
-        )}
-      </aside>
+          <div className="flex items-center gap-2">
+            <span className={`font-mono font-bold ${cartItemCount > 0 ? "text-base text-foam" : "text-xs text-foam/75"}`}>
+              {formatPesos(runningTotal)}
+            </span>
+            <span className={`opacity-75 ${cartItemCount > 0 ? "text-xs" : "text-[10px]"}`}>▲</span>
+          </div>
+        </button>
+      </div>
+
+      {/* ══ MOBILE: Bottom Sheet Drawer (below lg) ══════════════════════════ */}
+      {cartOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Current Order"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-espresso/50 backdrop-blur-xs lg:hidden animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setCartOpen(false);
+          }}
+        >
+          <div className="w-full max-h-[90vh] flex flex-col rounded-t-3xl border-t border-roast/20 bg-foam shadow-2xl animate-in slide-in-from-bottom-6 duration-200 overflow-hidden text-espresso">
+            {/* Drag Handle Bar */}
+            <div
+              className="flex justify-center pt-2.5 pb-1 bg-cream/80 cursor-pointer active:opacity-70"
+              onClick={() => setCartOpen(false)}
+              aria-label="Swipe or click to close"
+            >
+              <div className="h-1.5 w-12 rounded-full bg-roast/30" />
+            </div>
+
+            {/* Sheet Header */}
+            <div className="shrink-0 flex items-center justify-between border-b border-roast/10 bg-cream/80 px-5 py-3">
+              <div className="flex items-center gap-2">
+                <span className="text-base font-bold text-espresso">Current Order</span>
+                {cartItemCount > 0 && (
+                  <span className="rounded-full bg-espresso px-2 py-0.5 text-xs font-bold text-foam font-mono">
+                    {cartItemCount}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setCartOpen(false)}
+                aria-label="Close cart"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-roast hover:bg-latte/20 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Scrollable Checkout Content */}
+            <div
+              className="overflow-y-auto p-4 sm:p-5 space-y-4"
+              style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))" }}
+            >
+              {checkoutPanel}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Staff Stock Drawer / Modal */}
       <StaffStockModal
