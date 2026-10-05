@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { formatPesos } from "@/lib/format";
 import { dayLabel, monthLabel, shiftDays, shiftMonths, snapToMonday, todayBusinessDay } from "./dateNav";
 import MonthRevenueChart from "./MonthRevenueChart";
+import OrderReceiptModal from "./OrderReceiptModal";
 import type { AdminOrder, Summary, SummaryView } from "./types";
 
 const VIEWS: SummaryView[] = ["day", "week", "month"];
@@ -13,8 +14,13 @@ export default function OrderHistory() {
   const [anchorDate, setAnchor]   = useState(() => todayBusinessDay());
   const [summary, setSummary]     = useState<Summary | null>(null);
   const [dayOrders, setDayOrders] = useState<AdminOrder[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<AdminOrder | null>(null);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedOrder(null);
+  }, [view, anchorDate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -136,11 +142,16 @@ export default function OrderHistory() {
       ) : summary ? (
         <div className="space-y-5">
           <SummaryCard summary={summary} />
-          {view === "day"   && <DayTable orders={dayOrders} />}
+          {view === "day"   && <DayTable orders={dayOrders} onSelectOrder={setSelectedOrder} />}
           {view === "week"  && <WeekList summary={summary} onSelectDay={drillIntoDay} />}
           {view === "month" && <MonthRevenueChart dailyBreakdown={summary.dailyBreakdown} onSelectDay={drillIntoDay} />}
         </div>
       ) : null}
+
+      <OrderReceiptModal
+        order={selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+      />
     </div>
   );
 }
@@ -237,7 +248,13 @@ const STATUS_CLS: Record<string, string> = {
   CANCELLED: "border-red-400/40 bg-red-100 text-red-900",
 };
 
-function DayTable({ orders }: { orders: AdminOrder[] }) {
+export function DayTable({
+  orders,
+  onSelectOrder,
+}: {
+  orders: AdminOrder[];
+  onSelectOrder: (order: AdminOrder) => void;
+}) {
   if (!orders.length) {
     return (
       <div className="rounded-2xl border border-dashed border-roast/20 bg-foam p-8 text-center text-xs font-semibold text-roast">
@@ -251,7 +268,13 @@ function DayTable({ orders }: { orders: AdminOrder[] }) {
       {/* Mobile Card List */}
       <div className="space-y-3 sm:hidden">
         {orders.map((o) => (
-          <div key={o.id} className="rounded-2xl border border-roast/15 bg-foam p-4 shadow-2xs space-y-2">
+          <button
+            key={o.id}
+            id={`order-card-${o.dailyNumber}`}
+            type="button"
+            onClick={() => onSelectOrder(o)}
+            className="w-full text-left rounded-2xl border border-roast/15 bg-foam p-4 shadow-2xs space-y-2 hover:bg-cream/50 active:scale-[0.99] transition cursor-pointer"
+          >
             <div className="flex items-center justify-between">
               <span className="font-bold text-espresso text-base">
                 #{o.dailyNumber} {o.customerName ? `· ${o.customerName}` : ""}
@@ -269,7 +292,7 @@ function DayTable({ orders }: { orders: AdminOrder[] }) {
                 Cost: {o.costCents !== null && o.costCents !== undefined ? formatPesos(o.costCents) : "—"}
               </span>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -289,7 +312,20 @@ function DayTable({ orders }: { orders: AdminOrder[] }) {
           </thead>
           <tbody className="divide-y divide-roast/10">
             {orders.map((o) => (
-              <tr key={o.id} className="hover:bg-cream/40 transition">
+              <tr
+                key={o.id}
+                id={`order-row-${o.dailyNumber}`}
+                tabIndex={0}
+                role="button"
+                onClick={() => onSelectOrder(o)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSelectOrder(o);
+                  }
+                }}
+                className="hover:bg-cream/70 transition-colors cursor-pointer focus:outline-hidden focus:bg-cream/80"
+              >
                 <td className="py-3 px-4 font-bold text-espresso">#{o.dailyNumber}</td>
                 <td className="py-3 px-4 text-roast">{o.customerName || "—"}</td>
                 <td className="py-3 px-4 text-roast max-w-xs truncate">
